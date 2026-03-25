@@ -24,6 +24,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     iagg_simul = dynare_simul(idx.i_agg, :);
     kagg_simul = dynare_simul(idx.k_agg, :);
     magg_simul = NaN(1, size(dynare_simul, 2));
+    utility_intratemp_simul = dynare_simul(idx.utility_intratemp, :);
 
     %% Steady-state levels and weights
     ss_of = @(range) policies_ss((range(1):range(2)) - idx.ss_offset);
@@ -49,6 +50,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     lagg_ss = exp(policies_ss(idx.l_agg - idx.ss_offset));
     iagg_ss = exp(policies_ss(idx.i_agg - idx.ss_offset));
     kagg_ss = exp(policies_ss(idx.k_agg - idx.ss_offset));
+    utility_intratemp_ss_log = policies_ss(idx.utility_intratemp - idx.ss_offset);
 
     va_sector_ss = exp(p_ss_log) .* (exp(q_ss_log) - exp(mout_ss_log));
     va_weights = va_sector_ss' / sum(va_sector_ss);
@@ -67,6 +69,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     GDP_logdev = yagg_simul - log(yagg_ss);
     L_hc_logdev = lagg_simul - log(lagg_ss);
     K_logdev = kagg_simul - log(kagg_ss);
+    utility_intratemp_logdev = utility_intratemp_simul - utility_intratemp_ss_log;
 
     %% Aggregate intermediate use is still reconstructed because it is not a model aggregate endogenous variable
     M_levels = sum(p_ss .* exp(mout_simul), 1);
@@ -89,6 +92,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     sigma_K_agg  = std(K_logdev);
     sigma_L_hc_agg = std(L_hc_logdev);
     sigma_M_agg = std(M_logdev);
+    sigma_utility_intratemp_agg = std(utility_intratemp_logdev);
 
     aggregate_moments = struct();
     aggregate_moments.C = compute_univariate_moments(C_logdev);
@@ -97,6 +101,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     aggregate_moments.L = compute_univariate_moments(L_hc_logdev);
     aggregate_moments.M = compute_univariate_moments(M_logdev);
     aggregate_moments.K = compute_univariate_moments(K_logdev);
+    aggregate_moments.utility_intratemp = compute_univariate_moments(utility_intratemp_logdev);
 
     share_C = agg_ss.share_C;
     share_I = agg_ss.share_I;
@@ -166,6 +171,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     ModelStats.sigma_I_agg = sigma_I_agg;
     ModelStats.sigma_K_agg = sigma_K_agg;
     ModelStats.sigma_M_agg = sigma_M_agg;
+    ModelStats.sigma_utility_intratemp_agg = sigma_utility_intratemp_agg;
     ModelStats.sigma_L_legacy_agg = sigma_L_legacy_agg;
     ModelStats.sigma_M_legacy_agg = sigma_M_legacy_agg;
     ModelStats.sigma_C_pref_agg = sigma_C_pref_agg;

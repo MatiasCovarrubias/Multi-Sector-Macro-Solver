@@ -82,6 +82,7 @@ aggregates = {
     'GDP', 'GDP';
     'L', 'L';
     'I', 'I';
+    'U_intra', 'utility_intratemp';
 };
 
 for i = 1:size(aggregates, 1)
