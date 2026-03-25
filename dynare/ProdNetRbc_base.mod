@@ -184,7 +184,7 @@ exp(k_agg) = (
         @#endfor
         );
 
-utility_intratemp = exp(c_util) - theta*(1/(1+eps_l^(-1))) * exp(l_util)^(1+eps_l^(-1));
+exp(utility_intratemp) = exp(c_util) - theta*(1/(1+eps_l^(-1))) * exp(l_util)^(1+eps_l^(-1));
 
 end;
 
