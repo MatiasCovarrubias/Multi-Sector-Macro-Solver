@@ -1,0 +1,14 @@
+.DS_Store
+*.asv
+* copy.mat
+
+experiments/
+
+dynare/+*/
+dynare/*_generated/
+dynare/model_1st_order/
+dynare/stoch_simul/
+dynare/stoch_simul_2ndOrder/
+
+dynare/*.log
+dynare/ModStruct_temp.mat
