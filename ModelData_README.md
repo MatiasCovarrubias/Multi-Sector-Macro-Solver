@@ -119,6 +119,12 @@ Simulation-side aggregate moments are computed from:
 2. Convert them to `log(X_t) - log(X_ss_det)`.
 3. Compute moments on `shocks_simul` only.
 
+Sectoral value added in the moment code is also intended to use fixed steady-state prices:
+
+- `VA_j(t) = \bar P_j (Q_j(t) - M^{out}_j(t))`
+
+This is the convention expected by the April 2026 Python analysis layer when it recomputes benchmark moments for cross-checking.
+
 In `ModelData.Statistics.<Method>.ModelStats` this appears as:
 
 - `sample_window = 'shocks_simul'`
@@ -163,7 +169,7 @@ Impulse-response object. Contains one canonical artifact per shock.
 |-------|------|-------------|
 | `label` | string | Short label, e.g. `'neg20pct'` |
 | `value` | double | IRshock value (log deviation from SS) |
-| `size_pct` | int | Shock size in percent (e.g., 20) |
+| `size_pct` | numeric scalar | Shock size in percent (e.g., 12.5 or 50) |
 | `sign` | int | −1 (negative) or +1 (positive) |
 | `A_level` | double | TFP level: A = exp(−value) |
 | `description` | string | Human-readable description |

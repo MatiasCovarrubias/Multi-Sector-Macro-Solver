@@ -140,7 +140,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     end
 
     %% Sectoral statistics
-    va_sector_levels = exp(p_simul) .* (exp(q_simul) - exp(mout_simul));
+    va_sector_levels = p_ss .* (exp(q_simul) - exp(mout_simul));
     va_sector_logdev = log(va_sector_levels) - log(va_sector_ss);
     [corr_matrix_C, avg_pairwise_corr_C] = safe_corr_matrix_rows(c_logdev);
     [corr_matrix_VA, avg_pairwise_corr_VA] = safe_corr_matrix_rows(va_sector_logdev);
