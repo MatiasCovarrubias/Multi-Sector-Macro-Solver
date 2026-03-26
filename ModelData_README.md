@@ -141,6 +141,21 @@ Legacy comparison fields are labeled explicitly, for example:
 - `sigma_M_legacy_agg`
 - `sigma_Domar_avg_legacy`
 
+Variable naming inside `ModelStats` now follows:
+
+- `Y` = sectoral primary factors
+- `VA` = fixed-price sectoral value added, `VA_j(t) = \bar P_j (Q_j(t) - M^{out}_j(t))`
+- `GDP` = aggregate fixed-price value added read from the aggregate policy variable
+
+For reporting targets, the relevant sectoral volatility object is `sigma_VA_avg`.
+There is no separate reported `sigma(Y)` object in the MATLAB-to-Python contract.
+
+Additional metadata fields document this explicitly:
+
+- `variable_convention = 'Y=primary_factors; VA=P_ss*(Q-Mout); GDP=aggregate_VA'`
+- `domar_definition = 'log_fixed_price_gross_output_share_in_GDP'`
+- `domar_average_weight_definition = 'legacy_normalized_gross_output_weights'`
+
 Each `aggregate_moments.<X>` block stores:
 
 - `mean`

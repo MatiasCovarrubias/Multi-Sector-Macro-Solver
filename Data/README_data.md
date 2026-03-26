@@ -162,7 +162,7 @@ log(Y_agg(t+1)) - log(Y_agg(t)) = Σ_j [ 0.5 * (s_j(t) + s_j(t+1)) * (log(y_j(t+
 Where:
 
 - `Y_agg` = aggregate real variable
-- `y_j` = sectoral real variable
+- `y_j` = sectoral real variable placeholder in the generic index formula
 - `s_j(t)` = nominal share of sector j at time t
 
 **For Value Added**: Use nominal VA shares (`VAsh = VAn ./ sum(VAn)`)
@@ -283,7 +283,7 @@ On the model side, the same expenditure concepts are used:
 
 | Data Target               | Description                        | Weights            | Model Counterpart      |
 | ------------------------- | ---------------------------------- | ------------------ | ---------------------- |
-| `sigma_VA_avg`            | Avg sectoral value-added volatility | Nominal VA shares  | `y_j`                  |
+| `sigma_VA_avg`            | Avg sectoral value-added volatility | Nominal VA shares  | `VA_j = P_j(Q_j-M^{out}_j)` |
 | `sigma_L_avg`             | Avg sectoral labor volatility      | VA shares          | `l_j` (idx 112-148)    |
 | `sigma_I_avg`             | Avg sectoral investment volatility | VA shares          | `i_j` (idx 297-333)    |
 | `sigma_L_avg_empweighted` | Avg sectoral labor volatility      | Employment shares  | `l_j` with emp weights |

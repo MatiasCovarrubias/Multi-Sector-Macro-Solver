@@ -8,8 +8,12 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     end
 
     %% Extract simulated series in model-space log levels
+    % Naming convention used below:
+    % - Y = sectoral primary factors (the CES aggregate of K and L)
+    % - Q = sectoral gross output
+    % - VA = sectoral value added = P_ss .* (Q - Mout)
+    % - GDP = aggregate fixed-price value added read from the policy vector
     c_simul    = dynare_simul(idx.c(1):idx.c(2), :);
-    y_simul    = dynare_simul(idx.y(1):idx.y(2), :);
     l_simul    = dynare_simul(idx.l(1):idx.l(2), :);
     i_simul    = dynare_simul(idx.i(1):idx.i(2), :);
     a_simul    = dynare_simul(idx.a(1):idx.a(2), :);
@@ -19,7 +23,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     q_simul    = dynare_simul(idx.q(1):idx.q(2), :);
     k_simul    = dynare_simul(idx.k(1):idx.k(2), :);
     cagg_simul = dynare_simul(idx.c_agg, :);
-    yagg_simul = dynare_simul(idx.gdp_agg, :);
+    gdp_va_agg_simul = dynare_simul(idx.gdp_agg, :);
     lagg_simul = dynare_simul(idx.l_agg, :);
     iagg_simul = dynare_simul(idx.i_agg, :);
     kagg_simul = dynare_simul(idx.k_agg, :);
@@ -30,13 +34,11 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     ss_of = @(range) policies_ss((range(1):range(2)) - idx.ss_offset);
 
     c_ss_log = ss_of(idx.c);
-    y_ss_log = ss_of(idx.y);
     l_ss_log = ss_of(idx.l);
     i_ss_log = ss_of(idx.i);
     p_ss_log = ss_of(idx.p);
     q_ss_log = ss_of(idx.q);
     mout_ss_log = ss_of(idx.mout);
-    y_ss = exp(ss_of(idx.y));  y_ss = y_ss(:);
     q_ss = exp(ss_of(idx.q));  q_ss = q_ss(:);
     p_ss = exp(ss_of(idx.p));  p_ss = p_ss(:);
     l_ss = exp(ss_of(idx.l));  l_ss = l_ss(:);
@@ -46,7 +48,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     k_ss = exp(endostates_ss(1:n_sectors));  k_ss = k_ss(:);
 
     cagg_ss = exp(policies_ss(idx.c_agg - idx.ss_offset));
-    yagg_ss = exp(policies_ss(idx.gdp_agg - idx.ss_offset));
+    gdp_va_agg_ss = exp(policies_ss(idx.gdp_agg - idx.ss_offset));
     lagg_ss = exp(policies_ss(idx.l_agg - idx.ss_offset));
     iagg_ss = exp(policies_ss(idx.i_agg - idx.ss_offset));
     kagg_ss = exp(policies_ss(idx.k_agg - idx.ss_offset));
@@ -59,14 +61,14 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     inv_weights = (i_ss .* pk_ss)' / sum(i_ss .* pk_ss);
 
     c_logdev = c_simul - c_ss_log;
-    y_logdev = y_simul - y_ss_log;
     l_logdev = l_simul - l_ss_log;
     i_logdev = i_simul - i_ss_log;
+    q_logdev = q_simul - q_ss_log;
 
     %% Aggregate log deviations from Dynare aggregate endogenous variables
     C_logdev = cagg_simul - log(cagg_ss);
     I_logdev = iagg_simul - log(iagg_ss);
-    GDP_logdev = yagg_simul - log(yagg_ss);
+    GDP_logdev = gdp_va_agg_simul - log(gdp_va_agg_ss);
     L_hc_logdev = lagg_simul - log(lagg_ss);
     K_logdev = kagg_simul - log(kagg_ss);
     utility_intratemp_logdev = utility_intratemp_simul - utility_intratemp_ss_log;
@@ -79,7 +81,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     agg_ss = struct();
     agg_ss.C = cagg_ss;
     agg_ss.I = iagg_ss;
-    agg_ss.GDP = yagg_ss;
+    agg_ss.GDP = gdp_va_agg_ss;
     agg_ss.L = lagg_ss;
     agg_ss.M = M_ss;
     agg_ss.K = kagg_ss;
@@ -110,7 +112,6 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     %% Legacy aggregates
     sigma_C_pref_agg = std(cagg_simul);
     sigma_I_ces_agg = std(iagg_simul);
-    sigma_Y_primaryfactor_agg = std(yagg_simul);
     sigma_L_legacy_agg = std(lagg_simul);
     sigma_M_legacy_agg = std(magg_simul);
 
@@ -157,8 +158,11 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     sigma_L_avg_empweighted = sum(emp_weights .* sigma_L_sectoral);
     sigma_I_avg_invweighted = sum(inv_weights .* sigma_I_sectoral);
 
-    %% Domar weight volatility
-    domar_simul = q_simul - repmat(yagg_simul, n_sectors, 1);
+    %% Domar-share volatility
+    % This uses log(P_ss_j * Q_j / GDP). The constant log(P_ss_j) drops out of
+    % the standard deviation, so q_simul - gdp_va_agg_simul is sufficient here.
+    % The cross-sector average below still uses the legacy normalized GO weights.
+    domar_simul = q_simul - repmat(gdp_va_agg_simul, n_sectors, 1);
     sigma_Domar_sectoral = std(domar_simul, 0, 2)';
     sigma_Domar_avg = sum(go_weights .* sigma_Domar_sectoral);
 
@@ -176,8 +180,8 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     ModelStats.sigma_M_legacy_agg = sigma_M_legacy_agg;
     ModelStats.sigma_C_pref_agg = sigma_C_pref_agg;
     ModelStats.sigma_I_ces_agg = sigma_I_ces_agg;
-    ModelStats.sigma_Y_primaryfactor_agg = sigma_Y_primaryfactor_agg;
     ModelStats.aggregate_definition = 'exact_logdev_to_deterministic_ss';
+    ModelStats.variable_convention = 'Y=primary_factors; VA=P_ss*(Q-Mout); GDP=aggregate_VA';
     ModelStats.sample_window = sample_window;
     ModelStats.aggregate_moments = aggregate_moments;
     ModelStats.share_C = share_C;
@@ -203,7 +207,8 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     ModelStats.sigma_I_sectoral = sigma_I_sectoral;
     ModelStats.sigma_Domar_sectoral = sigma_Domar_sectoral;
     ModelStats.sigma_Domar_sectoral_legacy = sigma_Domar_sectoral;
-    ModelStats.domar_definition = 'legacy_go_minus_yagg';
+    ModelStats.domar_definition = 'log_fixed_price_gross_output_share_in_GDP';
+    ModelStats.domar_average_weight_definition = 'legacy_normalized_gross_output_weights';
     ModelStats.corr_matrix_VA = corr_matrix_VA;
     ModelStats.corr_matrix_L = corr_matrix_L;
     ModelStats.corr_matrix_I = corr_matrix_I;

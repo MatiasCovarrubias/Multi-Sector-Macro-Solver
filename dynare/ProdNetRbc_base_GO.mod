@@ -156,7 +156,7 @@ exp(l_util)=(
 
 exp(c_agg) = (
         @#for j in 1:n_sectors
-            +exp(p_@{j})*exp(c_@{j})
+            +exp(pss_@{j})*exp(c_@{j})
         @#endfor
         );
 
@@ -168,13 +168,13 @@ exp(l_agg) = (
 
 exp(gdp_agg) = (
         @#for j in 1:n_sectors
-            +exp(p_@{j})*(exp(q_@{j}) - exp(mout_@{j}))
+            +exp(pss_@{j})*(exp(q_@{j}) - exp(mout_@{j}))
         @#endfor
         );
 
 exp(i_agg) = (
         @#for j in 1:n_sectors
-            +exp(p_@{j})*exp(iout_@{j})
+            +exp(pss_@{j})*exp(iout_@{j})
         @#endfor
         );
 

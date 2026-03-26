@@ -16,18 +16,18 @@ end
 fprintf('    σ(L_agg):         %.4f   (aggregate labor, simple sum)\n', emp_tgt.sigma_L_agg);
 fprintf('    σ(I_agg):         %.4f   (aggregate investment, Törnqvist)\n', emp_tgt.sigma_I_agg);
 fprintf('    ── Average sectoral volatilities (VA-weighted) ──\n');
-fprintf('    σ(GDP) avg:       %.4f   (VA-weighted avg of sectoral GDP/value-added vol)\n', emp_tgt.sigma_VA_avg);
+fprintf('    σ(VA) avg:        %.4f   (VA-weighted avg of sectoral value-added vol)\n', emp_tgt.sigma_VA_avg);
 fprintf('    σ(L) avg:         %.4f   (VA-weighted avg of sectoral labor vol)\n', emp_tgt.sigma_L_avg);
 fprintf('    σ(I) avg:         %.4f   (VA-weighted avg of sectoral investment vol)\n', emp_tgt.sigma_I_avg);
 fprintf('    ── Average sectoral volatilities (own-variable weighted) ──\n');
-fprintf('    σ(GDP) own-wgt:   %.4f   (VA-share weighted avg of sectoral GDP/value-added vol)\n', emp_tgt.sigma_VA_avg);
+fprintf('    σ(VA) own-wgt:    %.4f   (VA-share weighted avg of sectoral value-added vol)\n', emp_tgt.sigma_VA_avg);
 fprintf('    σ(L) emp-wgt:     %.4f   (employment-weighted avg of sectoral labor vol)\n', emp_tgt.sigma_L_avg_empweighted);
 fprintf('    σ(I) inv-wgt:     %.4f   (investment-weighted avg of sectoral investment vol)\n', emp_tgt.sigma_I_avg_invweighted);
 fprintf('    ── Sectoral comovement (avg pairwise corr) ──\n');
 if isfield(emp_tgt, 'avg_pairwise_corr_C') && ~isnan(emp_tgt.avg_pairwise_corr_C)
     fprintf('    avg corr(C_j,C_k): %.4f   (sectoral consumption expenditure)\n', emp_tgt.avg_pairwise_corr_C);
 end
-fprintf('    avg corr(GDP_j,GDP_k): %.4f   (sectoral GDP/value added)\n', emp_tgt.avg_pairwise_corr_VA);
+fprintf('    avg corr(VA_j,VA_k):   %.4f   (sectoral value added)\n', emp_tgt.avg_pairwise_corr_VA);
 fprintf('    avg corr(L_j,L_k): %.4f   (sectoral labor)\n', emp_tgt.avg_pairwise_corr_L);
 fprintf('    avg corr(I_j,I_k): %.4f   (sectoral investment)\n', emp_tgt.avg_pairwise_corr_I);
 
