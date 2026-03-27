@@ -2,6 +2,7 @@ function params = params_config_defaults()
 % PARAMS_CONFIG_DEFAULTS Canonical parameter defaults for main.m
 
 params = struct();
+params.GHH = true;
 params.beta = 0.96;
 params.eps_l = 0.05;
 params.eps_c = 0.5;

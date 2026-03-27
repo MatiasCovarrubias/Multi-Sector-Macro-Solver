@@ -50,6 +50,7 @@ opts = set_default(opts, 'fsolve_options', optimset('Display','iter','TolX',1e-1
     'MaxFunEvals',10000000,'MaxIter',10000));
 
 %% Extract target elasticities (use defaults if not specified)
+params = set_default(params, 'GHH', true);
 params = set_default(params, 'sigma_c', 0.5);
 params = set_default(params, 'sigma_m', 0.01);
 params = set_default(params, 'sigma_q', 0.5);

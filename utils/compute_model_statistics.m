@@ -7,7 +7,9 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
         sample_window = 'shocks_simul';
     end
 
-    %% Extract simulated series in model-space log levels
+    %% Extract simulated series in model space
+    % Most variables are stored in log levels. The utility aggregate follows
+    % the steady-state policy representation: logged under GHH, level under KPR.
     % Naming convention used below:
     % - Y = sectoral primary factors (the CES aggregate of K and L)
     % - Q = sectoral gross output
@@ -52,7 +54,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     lagg_ss = exp(policies_ss(idx.l_agg - idx.ss_offset));
     iagg_ss = exp(policies_ss(idx.i_agg - idx.ss_offset));
     kagg_ss = exp(policies_ss(idx.k_agg - idx.ss_offset));
-    utility_intratemp_ss_log = policies_ss(idx.utility_intratemp - idx.ss_offset);
+    utility_intratemp_ss_policy = policies_ss(idx.utility_intratemp - idx.ss_offset);
 
     va_sector_ss = exp(p_ss_log) .* (exp(q_ss_log) - exp(mout_ss_log));
     va_weights = va_sector_ss' / sum(va_sector_ss);
@@ -71,7 +73,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     GDP_logdev = gdp_va_agg_simul - log(gdp_va_agg_ss);
     L_hc_logdev = lagg_simul - log(lagg_ss);
     K_logdev = kagg_simul - log(kagg_ss);
-    utility_intratemp_logdev = utility_intratemp_simul - utility_intratemp_ss_log;
+    utility_intratemp_logdev = utility_intratemp_simul - utility_intratemp_ss_policy;
 
     %% Aggregate intermediate use is still reconstructed because it is not a model aggregate endogenous variable
     M_levels = sum(p_ss .* exp(mout_simul), 1);

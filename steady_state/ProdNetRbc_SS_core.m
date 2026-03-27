@@ -15,6 +15,10 @@ sigma_l = params.sigma_l;
 n_sectors = params.n_sectors;
 Sigma_A = params.Sigma_A;
 theta = params.theta;
+GHH = true;
+if isfield(params, 'GHH')
+    GHH = logical(params.GHH);
+end
 ss_idx = get_steady_state_indices(n_sectors);
 
 %% -------------------- Endogenous variables -------------------- %%
@@ -36,9 +40,18 @@ L_util     = exp(sol_base(ss_idx.l_util));
 %% -------------------- Model equations -------------------- %%
 
 K = I./delta;
-utility_intratemp = C_util-theta*(1/(1+eps_l^(-1)))*L_util^(1+eps_l^(-1));
+if GHH
+    utility_intratemp = C_util - theta*(1/(1+eps_l^(-1)))*L_util^(1+eps_l^(-1));
+    utility_intratemp_policy = log(utility_intratemp);
+    labor_scaler = 1;
+else
+    utility_intratemp = C_util^(1-eps_c^(-1))/(1-eps_c^(-1)) ...
+        - theta*(1/(1+eps_l^(-1)))*L_util^(1+eps_l^(-1));
+    utility_intratemp_policy = utility_intratemp;
+    labor_scaler = C_util^(eps_c^(-1));
+end
 Pdef = (C_util * xi./C).^(1/sigma_c);
-Lsup = theta*L_util^(eps_l^(-1)) * (L/L_util).^(1/sigma_l);
+Lsup = theta * labor_scaler * L_util^(eps_l^(-1)) * (L/L_util).^(1/sigma_l);
 
 MPLmod = P .* ((mu).*Q./Y).^(1/sigma_q) .* ((1-alpha).*Y./L).^(1/sigma_y);
 MPKmod = (beta./(1-beta*(1-delta))).*(P.*((mu).*Q./Y).^(1/sigma_q) .* (alpha.*Y./K).^(1/sigma_y));
@@ -158,6 +171,7 @@ end
 %% Return Output
 
 StStval.parameters    = struct('parn_sectors', n_sectors, 'parbeta', beta, 'pareps_c', eps_c, 'pareps_l', eps_l, 'parphi', phi, 'partheta', theta, ...
+    'parGHH', double(GHH), ...
     'parsigma_c', sigma_c, 'parsigma_m', sigma_m, 'parsigma_q', sigma_q, 'parsigma_y', sigma_y,'parsigma_I', sigma_I, 'parsigma_l', sigma_l, ...
     'paralpha', alpha, 'pardelta', delta, 'parmu', mu, 'parrho', rho, 'parxi', xi, ...
     'parGamma_I', Gamma_I, 'parGamma_M', Gamma_M, 'parSigma_A', Sigma_A);
@@ -170,7 +184,7 @@ StStval.policies_ss = [ ...
     log(GDPagg_exp); ...
     log(Iagg_exp); ...
     log(Kagg_price); ...
-    log(utility_intratemp)];
+    utility_intratemp_policy];
 StStval.endostates_ss = log(K);
 StStval.C_ss = Cagg_exp;
 StStval.L_ss = Lagg_sum;

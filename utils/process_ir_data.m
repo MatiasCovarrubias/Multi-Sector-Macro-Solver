@@ -46,7 +46,7 @@ function [irs, sectoral] = process_ir_data(dynare_simul, sector_idx, client_idx,
 %         Row 26: gammaij_client_ir (client expenditure share deviation)
 %         Row 27: L_agg_ir (aggregate labor, log dev from SS)
 %         Row 28: K_agg_ir (aggregate capital, log dev from SS)
-%         Row 29: utility_intratemp_ir (log dev from SS)
+%         Row 29: utility_intratemp_ir (deviation from SS)
 
     %% Input validation
     validate_params(params, {'Gamma_M', 'sigma_m'}, 'process_ir_data');
@@ -89,7 +89,7 @@ function [irs, sectoral] = process_ir_data(dynare_simul, sector_idx, client_idx,
     GDP_ir = log(max(GDP_nom_levels, epsilon)) - log(max(GDP_nom_ss, epsilon));
     L_agg_ir = dynare_simul(idx.l_agg, :) - policies_ss(idx.l_agg - idx.ss_offset);
     K_agg_ir = dynare_simul(idx.k_agg, :) - policies_ss(idx.k_agg - idx.ss_offset);
-    utility_intratemp_ir = dynare_simul(idx.utility_intratemp, :) - log(max(utility_intratemp_ss, epsilon));
+    utility_intratemp_ir = dynare_simul(idx.utility_intratemp, :) - policies_ss(idx.utility_intratemp - idx.ss_offset);
     
     %% Sectoral output variables (shocked sector)
     Cj_ir = dynare_simul(dyn_idx(idx.c, sector_idx), :) - policies_ss(pol_idx(idx.c, sector_idx));

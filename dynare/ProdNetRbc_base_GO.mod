@@ -57,7 +57,7 @@ varexo
     @#endfor
     ;
 
-parameters eps_l eps_c beta phi theta sigma_c sigma_m sigma_q sigma_y sigma_I sigma_l
+parameters eps_l eps_c beta phi theta sigma_c sigma_m sigma_q sigma_y sigma_I sigma_l GHH
     @#for j in 1:n_sectors
         xi_@{j} alpha_@{j} mu_@{j} rho_@{j} delta_@{j} pss_@{j} pkss_@{j} pmss_@{j} Css_@{j}
         @#for i in 1:n_sectors
@@ -78,6 +78,7 @@ sigma_q = parsigma_q;
 sigma_y = parsigma_y;
 sigma_I = parsigma_I;
 sigma_l = parsigma_l;
+GHH = parGHH;
 @#for j in 1:n_sectors
     pss_@{j}=p_ss_log(@{j});
     pkss_@{j}=pk_ss_log(@{j});
@@ -95,7 +96,10 @@ sigma_l = parsigma_l;
 @#endfor
 
 model;
-# MU = (exp(c_util) - theta*(1/(1+eps_l^(-1))) * exp(l_util)^(1+eps_l^(-1)))^(-eps_c^(-1));
+# GHH_utility_intratemp = exp(c_util) - theta*(1/(1+eps_l^(-1))) * exp(l_util)^(1+eps_l^(-1));
+# KPR_utility_intratemp = exp(c_util)^(1-eps_c^(-1))/(1-eps_c^(-1)) - theta*(1/(1+eps_l^(-1))) * exp(l_util)^(1+eps_l^(-1));
+# MU = (GHH * GHH_utility_intratemp + (1-GHH) * exp(c_util))^(-eps_c^(-1));
+# MUF = (GHH * (exp(c_util(+1)) - theta*(1/(1+eps_l^(-1))) * exp(l_util(+1))^(1+eps_l^(-1))) + (1-GHH) * exp(c_util(+1)))^(-eps_c^(-1));
 
 @#for j in 1:n_sectors
     #   Pktil_@{j} = (0
@@ -109,9 +113,9 @@ model;
     
     exp(p_@{j}) = (exp(c_util) * xi_@{j} / exp(c_@{j}))^(1/sigma_c);
 
-    theta * exp(l_util)^(eps_l^(-1))*(exp(l_@{j})/exp(l_util))^(1/sigma_l) = (exp(p_@{j})) * (exp(a_@{j}))^((sigma_q-1)/sigma_q) * ( (mu_@{j}) * exp(q_@{j})/exp(y_@{j}) )^(1/sigma_q) * ( (1-alpha_@{j}) * exp(y_@{j})/exp(l_@{j}) )^(1/sigma_y);
+    theta * exp(c_util)^((1-GHH)*eps_c^(-1)) * exp(l_util)^(eps_l^(-1))*(exp(l_@{j})/exp(l_util))^(1/sigma_l) = (exp(p_@{j})) * (exp(a_@{j}))^((sigma_q-1)/sigma_q) * ( (mu_@{j}) * exp(q_@{j})/exp(y_@{j}) )^(1/sigma_q) * ( (1-alpha_@{j}) * exp(y_@{j})/exp(l_@{j}) )^(1/sigma_y);
     
-    exp(pk_@{j}) = beta * (((exp(c_util(+1)) - theta*(1/(1+eps_l^(-1))) * exp(l_util(+1))^(1+eps_l^(-1)))^(-eps_c^(-1))) / MU) * (exp(p_@{j}(+1)) * exp(a_@{j}(+1))^((sigma_q-1)/sigma_q) * ((mu_@{j}) * exp(q_@{j}(+1))/exp(y_@{j}(+1)))^(1/sigma_q) * (alpha_@{j} * exp(y_@{j}(+1))/exp(k_@{j}(+1)))^(1/sigma_y) + exp(pk_@{j}(+1)) * ((1-delta_@{j}) + phi/2 * ((exp(i_@{j}(+1))/exp(k_@{j}(+1)))^2 - delta_@{j}^2)));
+    exp(pk_@{j}) = beta * (MUF / MU) * (exp(p_@{j}(+1)) * exp(a_@{j}(+1))^((sigma_q-1)/sigma_q) * ((mu_@{j}) * exp(q_@{j}(+1))/exp(y_@{j}(+1)))^(1/sigma_q) * (alpha_@{j} * exp(y_@{j}(+1))/exp(k_@{j}(+1)))^(1/sigma_y) + exp(pk_@{j}(+1)) * ((1-delta_@{j}) + phi/2 * ((exp(i_@{j}(+1))/exp(k_@{j}(+1)))^2 - delta_@{j}^2)));
 
     exp(pm_@{j}) = (0
         @#for i in 1:n_sectors
@@ -184,7 +188,7 @@ exp(k_agg) = (
         @#endfor
         );
 
-exp(utility_intratemp) = exp(c_util) - theta*(1/(1+eps_l^(-1))) * exp(l_util)^(1+eps_l^(-1));
+GHH * exp(utility_intratemp) + (1-GHH) * utility_intratemp = GHH * GHH_utility_intratemp + (1-GHH) * KPR_utility_intratemp;
 
 end;
 

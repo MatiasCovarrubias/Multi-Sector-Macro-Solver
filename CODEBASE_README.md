@@ -93,8 +93,15 @@ There is also a cached smoke-suite steady state in:
 Run from MATLAB or:
 
 ```bash
-"/Applications/MATLAB_R2025b.app/bin/matlab" -batch "main"
+matlab -batch "main"
 ```
+
+Terminal setup:
+
+- `~/.local/bin/matlab` is the expected launcher for CLI use.
+- It auto-detects the newest `/Applications/MATLAB_R*.app/bin/matlab`.
+- If needed, override detection for one shell with `export MATLAB_BIN="/Applications/MATLAB_R2025b.app/bin/matlab"`.
+- `~/.local/bin` must be on `PATH` for terminal runs.
 
 Dynare should resolve to:
 

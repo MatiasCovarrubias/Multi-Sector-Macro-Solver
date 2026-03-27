@@ -22,20 +22,24 @@ cache_info = struct('source', 'recomputed', 'path', local_ss_file);
 if ~runtime_config.force_recalibrate
     if exist(local_ss_file, 'file') == 2
         loaded = load(local_ss_file, 'ModData', 'params');
-        [ModData, params] = reconcile_cached_steady_state( ...
-            loaded.ModData, loaded.params, current_params);
-        cache_info.source = 'experiment_cache';
-        cache_info.path = local_ss_file;
-        return;
+        if is_steady_state_cache_compatible(loaded.params, current_params)
+            [ModData, params] = reconcile_cached_steady_state( ...
+                loaded.ModData, loaded.params, current_params);
+            cache_info.source = 'experiment_cache';
+            cache_info.path = local_ss_file;
+            return;
+        end
     end
 
     if ~isempty(project_ss_file) && exist(project_ss_file, 'file') == 2
         loaded = load(project_ss_file, 'ModData', 'params');
-        [ModData, params] = reconcile_cached_steady_state( ...
-            loaded.ModData, loaded.params, current_params);
-        cache_info.source = 'project_cache';
-        cache_info.path = project_ss_file;
-        return;
+        if is_steady_state_cache_compatible(loaded.params, current_params)
+            [ModData, params] = reconcile_cached_steady_state( ...
+                loaded.ModData, loaded.params, current_params);
+            cache_info.source = 'project_cache';
+            cache_info.path = project_ss_file;
+            return;
+        end
     end
 end
 
@@ -65,6 +69,8 @@ for i = 1:numel(runtime_fields)
     end
 end
 
+params.GHH = resolve_preference_flag(current_params);
+
 if isfield(ModData, 'parameters')
     if isfield(current_params, 'rho')
         ModData.parameters.parrho = current_params.rho;
@@ -75,5 +81,17 @@ if isfield(ModData, 'parameters')
     if isfield(current_params, 'delta')
         ModData.parameters.pardelta = current_params.delta;
     end
+    ModData.parameters.parGHH = double(params.GHH);
+end
+end
+
+function tf = is_steady_state_cache_compatible(cached_params, current_params)
+tf = resolve_preference_flag(cached_params) == resolve_preference_flag(current_params);
+end
+
+function GHH = resolve_preference_flag(params)
+GHH = true;
+if isfield(params, 'GHH')
+    GHH = logical(params.GHH);
 end
 end
