@@ -34,11 +34,7 @@ if model_stats.n_model_cols == 0
             get_nested_or_nan(emp_tgt.correlations, corr_cfg.data_agg_field));
     end
 else
-    if isfield(model_stats, 'ms1_source') && strcmp(model_stats.ms1_source, 'theoretical')
-        fprintf('  │  1st column uses TheoStats; other columns use saved stats.    │\n');
-    else
-        fprintf('  │  Using saved simulation stats from ModelData.Statistics.*      │\n');
-    end
+    fprintf('  │  Using saved simulation stats from ModelData.Statistics.*      │\n');
     fprintf('  │                                                               │\n');
     fprintf('  │                    ');
     if model_stats.has_ms1,   fprintf('   1st   '); end
