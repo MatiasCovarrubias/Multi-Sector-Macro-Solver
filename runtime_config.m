@@ -34,9 +34,9 @@ config.save_results = true;
 config.force_recalibrate = true;
 
 config.date = "_April_2026";
-config.exp_label = "_GO_noVA_newwds";
+config.exp_label = "_GO_noVA_newwds_v2";
 
-config.gridpoints = 4;
+config.gridpoints = 24;
 config.sol_guess_file = '';
 config.fsolve_options = optimset('Display','iter','TolX',1e-10,'TolFun',1e-10, ...
     'MaxFunEvals',10000000,'MaxIter',10000);
