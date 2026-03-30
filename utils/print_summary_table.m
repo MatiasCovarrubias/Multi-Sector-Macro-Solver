@@ -10,6 +10,9 @@ fprintf('=======================================================================
 fprintf('                            SUMMARY TABLE\n');
 fprintf('================================================================================\n');
 fprintf('Experiment: %s\n', Summary.save_label);
+if isfield(ms, 'ms1_source') && strcmp(ms.ms1_source, 'theoretical')
+    fprintf('1st-order column uses TheoStats when available.\n');
+end
 
 print_model_vs_data_table(ms, Summary.empirical_targets, Summary.config);
 print_aggregate_moment_tables(ms);

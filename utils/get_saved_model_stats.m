@@ -6,15 +6,27 @@ if isstruct(ModelData) && isfield(ModelData, 'Statistics') && isstruct(ModelData
     stats_root = ModelData.Statistics;
 end
 
+has_theoretical_stats = isfield(stats_root, 'TheoStats') && isstruct(stats_root.TheoStats) && ...
+    ~isempty(fieldnames(stats_root.TheoStats));
+
 model_stats = struct();
-model_stats.has_ms1 = has_method_stats(stats_root, 'FirstOrder');
+model_stats.has_ms1 = has_theoretical_stats || has_method_stats(stats_root, 'FirstOrder');
 model_stats.has_ms2 = has_method_stats(stats_root, 'SecondOrder');
 model_stats.has_msPF = has_method_stats(stats_root, 'PerfectForesight');
 model_stats.has_msMIT = has_method_stats(stats_root, 'MITShocks');
 model_stats.n_model_cols = model_stats.has_ms1 + model_stats.has_ms2 + ...
     model_stats.has_msPF + model_stats.has_msMIT;
 
-if model_stats.has_ms1, model_stats.ms1 = stats_root.FirstOrder.ModelStats; else, model_stats.ms1 = struct(); end
+if has_theoretical_stats
+    model_stats.ms1 = stats_root.TheoStats;
+    model_stats.ms1_source = 'theoretical';
+elseif has_method_stats(stats_root, 'FirstOrder')
+    model_stats.ms1 = stats_root.FirstOrder.ModelStats;
+    model_stats.ms1_source = 'simulation';
+else
+    model_stats.ms1 = struct();
+    model_stats.ms1_source = 'none';
+end
 if model_stats.has_ms2, model_stats.ms2 = stats_root.SecondOrder.ModelStats; else, model_stats.ms2 = struct(); end
 if model_stats.has_msPF, model_stats.msPF = stats_root.PerfectForesight.ModelStats; else, model_stats.msPF = struct(); end
 if model_stats.has_msMIT, model_stats.msMIT = stats_root.MITShocks.ModelStats; else, model_stats.msMIT = struct(); end
