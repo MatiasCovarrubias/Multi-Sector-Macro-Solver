@@ -66,7 +66,7 @@ Results = struct( ...
 
 run_any_simul = opts.run_firstorder_simul || opts.run_secondorder_simul || ...
     opts.run_pf_simul || opts.run_mit_shocks_simul;
-needs_theoretical_stats = ~run_any_simul;
+needs_theoretical_stats = true;
 needs_1st_order_solution = opts.run_firstorder_simul || opts.run_firstorder_irs || needs_theoretical_stats;
 
 have_1st_order_solution = false;
