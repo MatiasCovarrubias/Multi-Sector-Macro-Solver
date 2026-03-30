@@ -43,7 +43,7 @@ Core model object: metadata, calibration, steady state, solution views, summary 
 | `Solution.StateSpace` | struct | State-space matrices (`A`, `B`, `C`, `D`) |
 | `Solution.indices` | struct | Variable indices in state space |
 | `Solution.steady_state` | vector | Dynare steady-state vector |
-| `Statistics.TheoStats` | struct | Theoretical moments from the state-space solution |
+| `Statistics.TheoStats` | struct | First-order theoretical moments, read directly from aggregate endogenous variables when available |
 | `Statistics.shocks_sd` | vector | Shock standard deviations |
 | `Statistics.states_sd` | vector | State variable std devs |
 | `Statistics.policies_sd` | vector | Policy variable std devs |
