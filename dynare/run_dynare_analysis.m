@@ -90,6 +90,11 @@ end
 
 if needs_theoretical_stats
     TheoStats = compute_theoretical_statistics(oo_1st, M_1st, policies_ss, n_sectors, endostates_ss);
+    if ~isstruct(TheoStats) || isempty(fieldnames(TheoStats))
+        error('run_dynare_analysis:MissingTheoStats', ...
+            ['Theoretical statistics could not be computed from the first-order solution. ' ...
+             'Expected a non-empty TheoStats struct from compute_theoretical_statistics.']);
+    end
     Results.TheoStats = TheoStats;
 
     if v && ~isempty(fieldnames(TheoStats))

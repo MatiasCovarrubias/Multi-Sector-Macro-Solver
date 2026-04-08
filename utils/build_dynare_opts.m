@@ -3,6 +3,7 @@ function opts = build_dynare_opts(config, sector_indices, mode)
     opts.sector_indices = sector_indices;
     opts.verbose = true;
     opts.ir_horizon = config.ir_horizon;
+    opts.rng_seed = config.rng_seed;
     opts.model_type = config.model_type;
     opts.simul_T = config.simul_T;
     opts.simul_burn_in = config.simul_burn_in;

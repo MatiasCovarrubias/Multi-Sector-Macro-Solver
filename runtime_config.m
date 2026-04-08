@@ -8,18 +8,19 @@ config = struct();
 
 config.run_firstorder_simul = true;
 config.run_secondorder_simul = false;
-config.run_firstorder_irs = true;
+config.run_firstorder_irs = false;
 config.run_secondorder_irs = false;
-config.run_pf_irs = true;
-config.run_pf_simul = true;
-config.run_mit_shocks_simul = true;
+config.run_pf_irs = false;
+config.run_pf_simul = false;
+config.run_mit_shocks_simul = false;
 config.sector_indices = [1];
 config.verbose = true;
 config.continue_on_failure = false;
 config.ir_horizon = 200;
-config.rng_seed = [];
+% Set to an integer for reproducible simulated shocks, or [] to use the current RNG state.
+config.rng_seed = 1;
 config.model_type = 'GO_noVA';
-config.simul_T = 20000;
+config.simul_T = 500000;
 config.simul_burn_in = 100;
 config.simul_burn_out = 150;
 config.mit_lookahead_horizon = 150;
@@ -31,12 +32,12 @@ config.smooth = false;
 config.wds = true;
 config.covariance_scale = 0.0;
 config.save_results = true;
-config.force_recalibrate = true;
+config.force_recalibrate = false;
 
 config.date = "_April_2026";
-config.exp_label = "_GO_noVA_newwds_v2";
+config.exp_label = "_GO_noVA_newwds_v2_locl";
 
-config.gridpoints = 24;
+config.gridpoints = 4;
 config.sol_guess_file = '';
 config.fsolve_options = optimset('Display','iter','TolX',1e-10,'TolFun',1e-10, ...
     'MaxFunEvals',10000000,'MaxIter',10000);

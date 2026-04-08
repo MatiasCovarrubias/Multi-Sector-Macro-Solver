@@ -19,8 +19,8 @@ function [irs, sectoral] = process_ir_data(dynare_simul, sector_idx, client_idx,
 % OUTPUTS:
 %   irs - Matrix of impulse responses (29 x T):
 %         Row  1: A_ir (TFP level)
-%         Row  2: C_ir (aggregate consumption expenditure, log dev from SS)
-%         Row  3: I_ir (aggregate investment expenditure, log dev from SS)
+%         Row  2: C_ir (aggregate consumption, direct aggregate endogenous variable, log dev from SS)
+%         Row  3: I_ir (aggregate investment, direct aggregate endogenous variable, log dev from SS)
 %         Row  4: Cj_ir (sectoral consumption)
 %         Row  5: Pj_ir (sectoral price)
 %         Row  6: Ioutj_ir (sectoral investment output)
@@ -41,7 +41,7 @@ function [irs, sectoral] = process_ir_data(dynare_simul, sector_idx, client_idx,
 %         Row 21: Yj_client_ir (client output)
 %         Row 22: Qj_client_ir (client Tobin's Q)
 %         Row 23: Kj_ir (sectoral capital)
-%         Row 24: GDP_ir (aggregate GDP expenditure, log dev from SS)
+%         Row 24: GDP_ir (aggregate GDP, direct aggregate endogenous variable, log dev from SS)
 %         Row 25: Pmj_client_ir (client intermediate price)
 %         Row 26: gammaij_client_ir (client expenditure share deviation)
 %         Row 27: L_agg_ir (aggregate labor, log dev from SS)
@@ -62,31 +62,9 @@ function [irs, sectoral] = process_ir_data(dynare_simul, sector_idx, client_idx,
     
     %% Aggregate variables
     A_ir = exp(dynare_simul(dyn_idx(idx.a, sector_idx), :));
-    % Expenditure-based aggregates (nominal, then log dev from SS)
-    epsilon = 1e-12;
-    p_log = dynare_simul(idx.p(1):idx.p(2), :);
-    c_log = dynare_simul(idx.c(1):idx.c(2), :);
-    iout_log = dynare_simul(idx.iout(1):idx.iout(2), :);
-    q_log = dynare_simul(idx.q(1):idx.q(2), :);
-    mout_log = dynare_simul(idx.mout(1):idx.mout(2), :);
-    
-    p_ss_log = policies_ss((idx.p(1)-idx.ss_offset):(idx.p(2)-idx.ss_offset));
-    c_ss_log = policies_ss((idx.c(1)-idx.ss_offset):(idx.c(2)-idx.ss_offset));
-    iout_ss_log = policies_ss((idx.iout(1)-idx.ss_offset):(idx.iout(2)-idx.ss_offset));
-    q_ss_log = policies_ss((idx.q(1)-idx.ss_offset):(idx.q(2)-idx.ss_offset));
-    mout_ss_log = policies_ss((idx.mout(1)-idx.ss_offset):(idx.mout(2)-idx.ss_offset));
-    
-    C_nom_levels = sum(exp(p_log + c_log), 1);
-    I_nom_levels = sum(exp(p_log + iout_log), 1);
-    GDP_nom_levels = sum(exp(p_log + q_log) - exp(p_log + mout_log), 1);
-    
-    C_nom_ss = sum(exp(p_ss_log + c_ss_log));
-    I_nom_ss = sum(exp(p_ss_log + iout_ss_log));
-    GDP_nom_ss = sum(exp(p_ss_log + q_ss_log) - exp(p_ss_log + mout_ss_log));
-    
-    C_ir = log(max(C_nom_levels, epsilon)) - log(max(C_nom_ss, epsilon));
-    I_ir = log(max(I_nom_levels, epsilon)) - log(max(I_nom_ss, epsilon));
-    GDP_ir = log(max(GDP_nom_levels, epsilon)) - log(max(GDP_nom_ss, epsilon));
+    C_ir = dynare_simul(idx.c_agg, :) - policies_ss(idx.c_agg - idx.ss_offset);
+    I_ir = dynare_simul(idx.i_agg, :) - policies_ss(idx.i_agg - idx.ss_offset);
+    GDP_ir = dynare_simul(idx.gdp_agg, :) - policies_ss(idx.gdp_agg - idx.ss_offset);
     L_agg_ir = dynare_simul(idx.l_agg, :) - policies_ss(idx.l_agg - idx.ss_offset);
     K_agg_ir = dynare_simul(idx.k_agg, :) - policies_ss(idx.k_agg - idx.ss_offset);
     utility_intratemp_ir = dynare_simul(idx.utility_intratemp, :) - policies_ss(idx.utility_intratemp - idx.ss_offset);

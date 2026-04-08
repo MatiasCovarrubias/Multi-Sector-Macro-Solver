@@ -83,23 +83,34 @@ fprintf('\n--- Dynare Analysis ---\n');
 n_shocks = numel(config.shock_values);
 run_any_irs = config.run_firstorder_irs || config.run_secondorder_irs || config.run_pf_irs;
 run_any_simul = config.run_firstorder_simul || config.run_secondorder_simul || config.run_pf_simul || config.run_mit_shocks_simul;
+needs_base_dynare_run = run_any_simul || ~run_any_irs || n_shocks == 0;
 
 AllShockResults = struct('DynareResults', {cell(n_shocks,1)}, ...
     'ShockArtifacts', {cell(n_shocks,1)});
 BaseRuntimeResults = struct();
 
-if run_any_simul
+if needs_base_dynare_run
     dynare_opts_base = build_dynare_opts(config, sector_indices, 'base');
     if config.run_mit_shocks_simul && strcmpi(config.mit_solver_mode, 'rolling')
         dynare_opts_base.mit_checkpoint_file = fullfile(exp_paths.temp, 'mit_rolling_checkpoint.mat');
         dynare_opts_base.mit_checkpoint_stride = max(1, min(50, ceil(config.simul_T / 20)));
     end
-    params.IRshock = config.shock_values(1).value;
-    print_simulation_config(config);
+    if n_shocks >= 1
+        params.IRshock = config.shock_values(1).value;
+    end
+    if run_any_simul
+        print_simulation_config(config);
+    else
+        fprintf('No simulation requested; running Dynare once to compute/save TheoStats.\n');
+    end
 
     tic;
     BaseRuntimeResults = run_dynare_analysis(ModData, params, dynare_opts_base);
-    fprintf('Base simulation: %.1fs\n', toc);
+    if run_any_simul
+        fprintf('Base simulation: %.1fs\n', toc);
+    else
+        fprintf('TheoStats-only Dynare pass: %.1fs\n', toc);
+    end
 end
 
 %% IRF analysis
@@ -108,6 +119,14 @@ if run_any_irs
         ModData, params, BaseRuntimeResults, AllShockResults, exp_paths, labels);
 else
     fprintf('\nIRF analysis skipped\n');
+end
+
+if ~isfield(BaseRuntimeResults, 'TheoStats') || ...
+        ~isstruct(BaseRuntimeResults.TheoStats) || ...
+        isempty(fieldnames(BaseRuntimeResults.TheoStats))
+    error('main:MissingTheoStats', ...
+        ['TheoStats were not produced by the Dynare workflow. ' ...
+         'Expected BaseRuntimeResults.TheoStats to be a non-empty struct.']);
 end
 
 %% Package results

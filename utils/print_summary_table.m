@@ -12,7 +12,7 @@ fprintf('=======================================================================
 fprintf('Experiment: %s\n', Summary.save_label);
 
 print_model_vs_data_table(ms, Summary.empirical_targets, Summary.config);
-print_aggregate_moment_tables(ms);
+print_aggregate_moment_tables(ms, Summary.theoretical_stats);
 print_irf_amplification_table(diag);
 
 fprintf('================================================================================\n\n');
@@ -69,10 +69,14 @@ if ~isempty(corr_cfg.model_agg_field)
 end
 end
 
-function print_aggregate_moment_tables(ms)
+function print_aggregate_moment_tables(ms, theo_stats)
 fprintf('\n[2] AGGREGATE MOMENTS\n');
 
-if ms.n_model_cols == 0
+if nargin < 2 || ~isstruct(theo_stats)
+    theo_stats = struct();
+end
+
+if ms.n_model_cols == 0 && isempty(fieldnames(theo_stats))
     fprintf('    (No simulation statistics available)\n');
     return;
 end
@@ -89,7 +93,8 @@ for i = 1:size(aggregates, 1)
     label = aggregates{i, 1};
     field_name = aggregates{i, 2};
 
-    if ~any_method_has_aggregate_moments(ms, field_name)
+    has_theo_row = has_aggregate_moments(theo_stats, field_name);
+    if ~any_method_has_aggregate_moments(ms, field_name) && ~has_theo_row
         continue;
     end
 
@@ -101,6 +106,7 @@ for i = 1:size(aggregates, 1)
     print_aggregate_moment_row(ms.has_ms2, '2nd', ms.ms2, field_name);
     print_aggregate_moment_row(ms.has_msPF, 'PF',  ms.msPF, field_name);
     print_aggregate_moment_row(ms.has_msMIT, 'MIT', ms.msMIT, field_name);
+    print_aggregate_moment_row(has_theo_row, 'Theo', theo_stats, field_name);
 end
 end
 

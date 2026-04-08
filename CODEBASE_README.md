@@ -51,7 +51,7 @@ Each file has a `use_defaults` boolean:
 
 Use:
 
-- `runtime_config.m` for experiment settings, Dynare flags, horizons, burn-in, burn-out, saving, and shock sizes
+- `runtime_config.m` for experiment settings, Dynare flags, horizons, burn-in, burn-out, saving, shock sizes, and the simulation RNG seed (`rng_seed`)
 - `params_config.m` for model parameters
 
 The compatibility wrappers:
@@ -173,4 +173,4 @@ run_local_smoke_tests(cfg)
 - The three saved objects are `ModelData`, `ModelData_simulation`, and `ModelData_IRs`.
 - Simulation artifacts live in `ModelData_simulation`.
 - IRF artifacts live in `ModelData_IRs.shocks`.
-- IRFs use the shared 27-row layout defined by `utils/process_ir_data.m`.
+- IRFs use the shared 29-row layout defined by `utils/process_ir_data.m`.

@@ -49,4 +49,8 @@ shocks;
 @#endfor
 end;
 
-stoch_simul(order=1, periods=0, irf=0, ar=1, nocorr, nograph, nofunctions) c_agg l_agg gdp_agg i_agg k_agg;
+// IMPORTANT:
+// - keep the full endogenous list (no trailing var list) so oo_.var and
+//   oo_.autocorr include the full state/policy system needed by TheoStats.
+// - omit the periods option so Dynare reports theoretical moments in oo_.var.
+stoch_simul(order=1, irf=0, ar=1, nocorr, nograph, nofunctions);

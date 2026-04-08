@@ -232,15 +232,15 @@ Each `aggregate_*` block stores:
 - `L`
 - `K`
 
-Here `L` and `K` are read directly from the Dynare aggregate endogenous variables, stored as log deviations from deterministic steady state.
+Here `C`, `I`, `GDP`, `L`, and `K` are read directly from the Dynare aggregate endogenous variables, stored as log deviations from deterministic steady state. The `*_exp` fields are compatibility aliases for the same direct aggregate IR rows.
 
 ### IRF row map
 
 | Row | Variable | Description |
 |-----|----------|-------------|
 | 1 | `A_ir` | TFP level (not deviation) |
-| 2 | `C_ir` | Aggregate consumption expenditure (log dev from SS) |
-| 3 | `I_ir` | Aggregate investment expenditure (log dev from SS) |
+| 2 | `C_ir` | Aggregate consumption from direct aggregate endogenous variable (log dev from SS) |
+| 3 | `I_ir` | Aggregate investment from direct aggregate endogenous variable (log dev from SS) |
 | 4 | `Cj_ir` | Sectoral consumption |
 | 5 | `Pj_ir` | Sectoral price |
 | 6 | `Ioutj_ir` | Sectoral investment output |
@@ -261,7 +261,7 @@ Here `L` and `K` are read directly from the Dynare aggregate endogenous variable
 | 21 | `Yj_client_ir` | Client output |
 | 22 | `Qj_client_ir` | Client Tobin's Q |
 | 23 | `Kj_ir` | Sectoral capital (log dev from SS) |
-| 24 | `GDP_ir` | Aggregate GDP expenditure (log dev from SS) |
+| 24 | `GDP_ir` | Aggregate GDP from direct aggregate endogenous variable (log dev from SS) |
 | 25 | `Pmj_client_ir` | Client intermediate price (log dev from SS) |
 | 26 | `gammaij_client_ir` | Client expenditure share deviation |
 | 27 | `L_ir` | Aggregate labor headcount (log dev from SS) |

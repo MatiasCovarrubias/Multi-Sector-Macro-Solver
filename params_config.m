@@ -5,7 +5,7 @@ function params = params_config()
 use_defaults = false;
 
 params = struct();
-params.GHH = false;
+params.GHH = true;
 params.beta = 0.96;
 params.eps_l = 0.5;
 params.eps_c = 0.33;
