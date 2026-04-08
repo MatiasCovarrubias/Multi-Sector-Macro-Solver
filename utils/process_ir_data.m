@@ -1,5 +1,5 @@
-function [irs, sectoral] = process_ir_data(dynare_simul, sector_idx, client_idx, params, steady_state, ...
-    n_sectors, endostates_ss, utility_intratemp_ss, policies_ss)
+function [irs, sectoral] = process_ir_data(dynare_simul, sector_idx, client_idx, params, ...
+    n_sectors, endostates_ss, policies_ss)
 % PROCESS_IR_DATA Process Dynare simulation output into impulse response data
 %
 % This function extracts and transforms variables from Dynare simulation output
@@ -10,10 +10,8 @@ function [irs, sectoral] = process_ir_data(dynare_simul, sector_idx, client_idx,
 %   sector_idx    - Index of the shocked sector
 %   client_idx    - Index of the main client sector
 %   params        - Model parameters (needs Gamma_M, sigma_m)
-%   steady_state  - Dynare steady state vector
 %   n_sectors     - Number of sectors (37)
 %   endostates_ss - Steady state endogenous states (log capital)
-%   utility_intratemp_ss - Intratemporal utility steady state
 %   policies_ss   - Steady state policy variables
 %
 % OUTPUTS:

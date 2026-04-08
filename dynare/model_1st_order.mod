@@ -34,10 +34,6 @@ utility_intratemp = policies_ss(11*parn_sectors+8);
 
 end;
 
-verbatim;
-options_.steadystate_flag = 1;
-end;
-
 shocks;
 @#for j in 1:n_sectors
    var e_@{j} = parSigma_A(@{j},@{j});

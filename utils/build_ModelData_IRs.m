@@ -11,30 +11,20 @@ function ModelData_IRs = build_ModelData_IRs(AllShockResults, config, save_label
     ModelData_IRs.sector_indices = sector_indices;
     ModelData_IRs.ir_horizon = config.ir_horizon;
     ModelData_IRs.metadata = struct();
-    ModelData_IRs.metadata.run_flags = build_ir_run_flags(config);
+    ModelData_IRs.metadata.run_flags = resolve_ir_run_flags(AllShockResults, config);
     ModelData_IRs.metadata.has_irfs = true;
-    ModelData_IRs.shocks = [];
+    packaged_shocks = cell(n_shocks, 1);
 
     for i = 1:n_shocks
         shock_artifact = get_runtime_irf_artifact(AllShockResults, i);
         assert(is_valid_irf_artifact(shock_artifact), ...
             'build_ModelData_IRs:MissingShockArtifact', ...
             'Missing canonical IR artifact for shock %d.', i);
-        packaged_shock = package_shock_artifact( ...
-            shock_artifact, config.shock_values(i), sector_indices, ...
-            ModelData_IRs.metadata.run_flags, config.ir_horizon, n_sectors_analyzed);
-        if i == 1
-            ModelData_IRs.shocks = repmat(packaged_shock, n_shocks, 1);
-        else
-            assert_matching_struct_fields(ModelData_IRs.shocks(1), packaged_shock, i);
-        end
-        try
-            ModelData_IRs.shocks(i) = packaged_shock;
-        catch ME
-            print_assignment_failure_debug(ModelData_IRs.shocks, packaged_shock, i, ME);
-            rethrow(ME);
-        end
+        packaged_shocks{i} = package_shock_artifact( ...
+            shock_artifact, config.shock_values(i), sector_indices, config.ir_horizon, n_sectors_analyzed);
     end
+
+    ModelData_IRs.shocks = vertcat(packaged_shocks{:});
 end
 
 function run_flags = build_ir_run_flags(config)
@@ -43,6 +33,22 @@ run_flags = struct( ...
     'has_2ndorder', logical(config.run_secondorder_irs), ...
     'has_pf', logical(config.run_pf_irs), ...
     'has_mit', false);
+end
+
+function run_flags = resolve_ir_run_flags(AllShockResults, config)
+run_flags = struct();
+
+artifacts = get_irf_artifact_list(AllShockResults);
+for i = 1:numel(artifacts)
+    artifact = get_runtime_irf_artifact(AllShockResults, i);
+    if is_valid_irf_artifact(artifact) && isfield(artifact, 'metadata') && ...
+            isstruct(artifact.metadata) && isfield(artifact.metadata, 'run_flags')
+        run_flags = artifact.metadata.run_flags;
+        return;
+    end
+end
+
+run_flags = build_ir_run_flags(config);
 end
 
 function tf = has_irf_artifacts(AllShockResults)
@@ -80,13 +86,15 @@ tf = isstruct(artifact) && ~isempty(fieldnames(artifact)) && ...
     isfield(artifact, 'summary_stats');
 end
 
-function shock_artifact = package_shock_artifact(artifact, shock_config, sector_indices, run_flags, ir_horizon, n_sectors_analyzed)
+function shock_artifact = package_shock_artifact(artifact, shock_config, sector_indices, ir_horizon, n_sectors_analyzed)
 assert(numel(artifact.entries) == n_sectors_analyzed, ...
     'build_ModelData_IRs:UnexpectedEntryCount', ...
     'Shock artifact entry count does not match analyzed sector count.');
 assert(numel(artifact.summary_stats.peaks.first_order) == n_sectors_analyzed, ...
     'build_ModelData_IRs:UnexpectedSummarySize', ...
     'Shock artifact summary size does not match analyzed sector count.');
+
+metadata = build_shock_metadata(artifact.metadata, sector_indices, ir_horizon);
 
 shock_artifact = struct( ...
     'label', get_optional_field(shock_config, 'label', ''), ...
@@ -96,8 +104,8 @@ shock_artifact = struct( ...
     'A_level', get_optional_field(shock_config, 'A_level', []), ...
     'description', get_optional_field(shock_config, 'description', ''), ...
     'sector_indices', sector_indices, ...
-    'run_flags', run_flags, ...
-    'metadata', build_shock_metadata(artifact.metadata, run_flags, sector_indices, ir_horizon), ...
+    'run_flags', metadata.run_flags, ...
+    'metadata', metadata, ...
     'entries', artifact.entries, ...
     'summary_stats', artifact.summary_stats);
 
@@ -108,7 +116,7 @@ if isempty(shock_artifact.metadata.shock_description)
 end
 end
 
-function metadata = build_shock_metadata(source_metadata, run_flags, sector_indices, ir_horizon)
+function metadata = build_shock_metadata(source_metadata, sector_indices, ir_horizon)
 metadata = struct();
 if isstruct(source_metadata) && ~isempty(fieldnames(source_metadata))
     metadata_fields = fieldnames(source_metadata);
@@ -117,7 +125,10 @@ if isstruct(source_metadata) && ~isempty(fieldnames(source_metadata))
         metadata.(field_name) = source_metadata.(field_name);
     end
 end
-metadata.run_flags = run_flags;
+
+if ~isfield(metadata, 'run_flags') || isempty(metadata.run_flags)
+    metadata.run_flags = struct('has_1storder', false, 'has_2ndorder', false, 'has_pf', false, 'has_mit', false);
+end
 metadata.sector_indices = sector_indices;
 metadata.ir_horizon = ir_horizon;
 end
@@ -127,39 +138,4 @@ value = default_value;
 if isstruct(s) && isfield(s, field_name)
     value = s.(field_name);
 end
-end
-
-function assert_matching_struct_fields(reference_struct, candidate_struct, idx)
-reference_fields = fieldnames(reference_struct);
-candidate_fields = fieldnames(candidate_struct);
-if isequal(reference_fields, candidate_fields)
-    return;
-end
-
-fprintf(2, '[build_ModelData_IRs] field mismatch before assigning shock %d\n', idx);
-fprintf(2, '  reference fields: %s\n', join_fieldnames(reference_fields));
-fprintf(2, '  candidate fields: %s\n', join_fieldnames(candidate_fields));
-fprintf(2, '  only in reference: %s\n', join_fieldnames(setdiff(reference_fields, candidate_fields, 'stable')));
-fprintf(2, '  only in candidate: %s\n', join_fieldnames(setdiff(candidate_fields, reference_fields, 'stable')));
-error('build_ModelData_IRs:FieldMismatch', ...
-    'Packaged shock %d fields do not match the first packaged shock.', idx);
-end
-
-function print_assignment_failure_debug(existing_struct, packaged_shock, idx, ME)
-fprintf(2, '[build_ModelData_IRs] assignment failed for shock %d: %s\n', idx, ME.message);
-if isempty(existing_struct)
-    fprintf(2, '  existing struct array is empty before assignment.\n');
-    return;
-end
-
-fprintf(2, '  existing fields: %s\n', join_fieldnames(fieldnames(existing_struct(1))));
-fprintf(2, '  packaged fields: %s\n', join_fieldnames(fieldnames(packaged_shock)));
-end
-
-function joined = join_fieldnames(fields)
-if isempty(fields)
-    joined = '(none)';
-    return;
-end
-joined = strjoin(fields(:).', ', ');
 end

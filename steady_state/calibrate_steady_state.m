@@ -48,6 +48,7 @@ opts = set_default(opts, 'verbose', true);
 opts = set_default(opts, 'sol_guess_file', 'SS_CDsolution_norm_permanent.mat');
 opts = set_default(opts, 'fsolve_options', optimset('Display','iter','TolX',1e-10,'TolFun',1e-10,...
     'MaxFunEvals',10000000,'MaxIter',10000));
+opts = set_default(opts, 'residual_tolerance', 1e-8);
 
 %% Extract target elasticities (use defaults if not specified)
 params = set_default(params, 'GHH', true);
@@ -108,11 +109,12 @@ end
 % Solve
 tic_stage1 = tic;
 fh_compStSt = @(x) ProdNetRbc_SS(x, params, 0);
-[sol_init, ~, exfl] = fsolve(fh_compStSt, sol_guess, fsolve_opts);
-[~, ModData] = ProdNetRbc_SS(sol_init, params, 0);
+[sol_init, ModData, solve_info] = solve_steady_state_stage( ...
+    fh_compStSt, sol_guess, fsolve_opts, opts.residual_tolerance, 'Stage 1');
 
 if opts.verbose
-    fprintf('\n  Stage 1 completed: %s (%.2f s)\n', exit_flag_str(exfl), toc(tic_stage1));
+    fprintf('\n  Stage 1 completed: %s | max|f|=%.3e (%.2f s)\n', ...
+        exit_flag_str(solve_info.exitflag), solve_info.max_abs_residual, toc(tic_stage1));
     fprintf('    θ = %.4f\n', ModData.parameters.partheta);
 end
 
@@ -132,12 +134,15 @@ for i = 1:gridpoints
     tic_iter = tic;
     params.sigma_l = sigma_l_grid(i);
     fh_compStSt = @(x) ProdNetRbc_SS(x, params, 0);
-    [sol_init, ~, exfl] = fsolve(fh_compStSt, sol_guess, fsolve_opts);
-    [~, ModData] = ProdNetRbc_SS(sol_init, params, 0);
+    [sol_init, ModData, solve_info] = solve_steady_state_stage( ...
+        fh_compStSt, sol_guess, fsolve_opts, opts.residual_tolerance, ...
+        sprintf('Stage 2 step %d/%d', i, gridpoints));
     sol_guess = sol_init;
     
     if opts.verbose
-        fprintf('    [%d/%d] σ_l = %.3f  →  %s (%.2fs)\n', i, gridpoints, params.sigma_l, exit_flag_str(exfl), toc(tic_iter));
+        fprintf('    [%d/%d] σ_l = %.3f  →  %s | max|f|=%.3e (%.2fs)\n', ...
+            i, gridpoints, params.sigma_l, exit_flag_str(solve_info.exitflag), ...
+            solve_info.max_abs_residual, toc(tic_iter));
     end
 end
 
@@ -170,13 +175,15 @@ for i = 1:gridpoints
     params.sigma_m = sigma_m_grid(i);
     params.sigma_q = sigma_q_grid(i);
     fh_compStSt = @(x) ProdNetRbc_SS_vaioshares(x, params, 0);
-    [sol_partial, ~, exfl] = fsolve(fh_compStSt, sol_guess, fsolve_opts);
-    [~, ModData] = ProdNetRbc_SS_vaioshares(sol_partial, params, 0);
+    [sol_partial, ModData, solve_info] = solve_steady_state_stage( ...
+        fh_compStSt, sol_guess, fsolve_opts, opts.residual_tolerance, ...
+        sprintf('Stage 3 step %d/%d', i, gridpoints));
     sol_guess = sol_partial;
     
     if opts.verbose
-        fprintf('    [%d/%d] σ_m = %.3f, σ_q = %.3f  →  %s (%.2fs)\n', ...
-            i, gridpoints, params.sigma_m, params.sigma_q, exit_flag_str(exfl), toc(tic_iter));
+        fprintf('    [%d/%d] σ_m = %.3f, σ_q = %.3f  →  %s | max|f|=%.3e (%.2fs)\n', ...
+            i, gridpoints, params.sigma_m, params.sigma_q, exit_flag_str(solve_info.exitflag), ...
+            solve_info.max_abs_residual, toc(tic_iter));
     end
 end
 
@@ -216,13 +223,15 @@ for i = 1:gridpoints
     params.sigma_y = sigma_y_grid(i);
     params.sigma_I = sigma_I_grid(i);
     fh_compStSt = @(x) ProdNetRbc_SS_expshares(x, params, 0);
-    [sol_final, ~, exfl] = fsolve(fh_compStSt, sol_guess, fsolve_opts);
-    [~, ModData] = ProdNetRbc_SS_expshares(sol_final, params, 0);
+    [sol_final, ModData, solve_info] = solve_steady_state_stage( ...
+        fh_compStSt, sol_guess, fsolve_opts, opts.residual_tolerance, ...
+        sprintf('Stage 4 step %d/%d', i, gridpoints));
     sol_guess = sol_final;
     
     if opts.verbose
-        fprintf('    [%d/%d] σ_c = %.3f, σ_y = %.3f, σ_I = %.3f  →  %s (%.2fs)\n', ...
-            i, gridpoints, params.sigma_c, params.sigma_y, params.sigma_I, exit_flag_str(exfl), toc(tic_iter));
+        fprintf('    [%d/%d] σ_c = %.3f, σ_y = %.3f, σ_I = %.3f  →  %s | max|f|=%.3e (%.2fs)\n', ...
+            i, gridpoints, params.sigma_c, params.sigma_y, params.sigma_I, ...
+            exit_flag_str(solve_info.exitflag), solve_info.max_abs_residual, toc(tic_iter));
     end
 end
 
@@ -251,12 +260,15 @@ if eps_l_target ~= eps_l_start
         tic_iter = tic;
         params.eps_l = eps_l_grid(i);
         fh_compStSt = @(x) ProdNetRbc_SS_expshares(x, params, 0);
-        [sol_final, ~, exfl] = fsolve(fh_compStSt, sol_guess, fsolve_opts);
-        [~, ModData] = ProdNetRbc_SS_expshares(sol_final, params, 0);
+        [sol_final, ModData, solve_info] = solve_steady_state_stage( ...
+            fh_compStSt, sol_guess, fsolve_opts, opts.residual_tolerance, ...
+            sprintf('Stage 5 step %d/%d', i, gridpoints));
         sol_guess = sol_final;
         
         if opts.verbose
-            fprintf('    [%d/%d] ε_l = %.3f  →  %s (%.2fs)\n', i, gridpoints, params.eps_l, exit_flag_str(exfl), toc(tic_iter));
+            fprintf('    [%d/%d] ε_l = %.3f  →  %s | max|f|=%.3e (%.2fs)\n', ...
+                i, gridpoints, params.eps_l, exit_flag_str(solve_info.exitflag), ...
+                solve_info.max_abs_residual, toc(tic_iter));
         end
     end
     
@@ -301,5 +313,32 @@ function str = exit_flag_str(exfl)
         otherwise
             str = sprintf('Exit flag: %d', exfl);
     end
+end
+
+function [sol, ModData, solve_info] = solve_steady_state_stage( ...
+        model_fun, sol_guess, fsolve_opts, residual_tolerance, stage_label)
+[sol, fval, exfl] = fsolve(model_fun, sol_guess, fsolve_opts);
+
+assert(isnumeric(sol) && isvector(sol) && all(isfinite(sol)), ...
+    'calibrate_steady_state:InvalidSolution', ...
+    '[%s] fsolve returned a non-finite steady-state candidate.', stage_label);
+
+assert(isnumeric(fval) && all(isfinite(fval(:))), ...
+    'calibrate_steady_state:InvalidResidual', ...
+    '[%s] fsolve returned non-finite residuals.', stage_label);
+
+max_abs_residual = max(abs(fval(:)));
+assert(exfl > 0, ...
+    'calibrate_steady_state:SolverFailed', ...
+    '[%s] Steady-state solve failed: %s (max|f|=%.3e).', ...
+    stage_label, exit_flag_str(exfl), max_abs_residual);
+
+assert(max_abs_residual <= residual_tolerance, ...
+    'calibrate_steady_state:ResidualTooLarge', ...
+    '[%s] Steady-state residual too large: max|f|=%.3e > %.3e.', ...
+    stage_label, max_abs_residual, residual_tolerance);
+
+[~, ModData] = model_fun(sol);
+solve_info = struct('exitflag', exfl, 'max_abs_residual', max_abs_residual);
 end
 

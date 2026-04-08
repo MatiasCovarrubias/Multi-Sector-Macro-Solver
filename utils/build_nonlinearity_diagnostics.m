@@ -1,109 +1,14 @@
 function Diagnostics = build_nonlinearity_diagnostics(ModelData_simulation, AllShockResults, params, config, ModData)
-% BUILD_NONLINEARITY_DIAGNOSTICS Compute nonlinearity diagnostics without printing
+% BUILD_NONLINEARITY_DIAGNOSTICS Build the compact IRF summary diagnostics
+%
+% The old simulation-side diagnostics reconstructed aggregate levels from
+% sectoral paths. Those checks are no longer part of the canonical
+% postprocessing workflow. The remaining Diagnostics payload exists only to
+% support the end-of-run IRF amplification summary table.
 
-n_sectors = params.n_sectors;
-idx = get_variable_indices(n_sectors);
-
-endostates_ss = ModData.endostates_ss;
-policies_ss = ModData.policies_ss;
-k_ss = endostates_ss(1:n_sectors);
+%#ok<INUSD>
 
 Diagnostics = struct();
-Diagnostics.has_firstorder = false;
-Diagnostics.has_secondorder = false;
-Diagnostics.has_pf = false;
-Diagnostics.has_mit = false;
-Diagnostics.has_irfs = false;
-Diagnostics.simulation_moment_window = 'shocks_simul';
-
-if isfield(ModelData_simulation, 'PerfectForesight') && isfield(ModelData_simulation.PerfectForesight, 'shocks_simul')
-    Diagnostics.has_pf = true;
-    has_pf = true;
-
-    k_determ = ModelData_simulation.PerfectForesight.shocks_simul(idx.k(1):idx.k(2), :);
-    avg_k_logdev = mean(k_determ - k_ss, 2);
-
-    Diagnostics.prealloc_mean_abs_k = mean(abs(avg_k_logdev)) * 100;
-    Diagnostics.prealloc_k_mining = avg_k_logdev(1) * 100;
-
-    [max_dev, max_idx] = max(avg_k_logdev);
-    [min_dev, min_idx] = min(avg_k_logdev);
-    all_labels = SectorLabel(1:n_sectors);
-    Diagnostics.prealloc_k_max = max_dev * 100;
-    Diagnostics.prealloc_k_max_sector = all_labels.display{max_idx};
-    Diagnostics.prealloc_k_min = min_dev * 100;
-    Diagnostics.prealloc_k_min_sector = all_labels.display{min_idx};
-    Diagnostics.prealloc_k_all = avg_k_logdev * 100;
-else
-    has_pf = false;
-end
-
-if isfield(ModelData_simulation, 'FirstOrder') && isfield(ModelData_simulation.FirstOrder, 'shocks_simul')
-    Diagnostics.has_firstorder = true;
-    simul_1st = ModelData_simulation.FirstOrder.shocks_simul;
-    [C_agg_logdev, I_agg_logdev, GDP_agg_logdev, L_agg_logdev, M_agg_logdev] = ...
-        compute_exact_aggregate_logdevs(simul_1st, idx, policies_ss, endostates_ss);
-
-    Diagnostics.firstorder_C_mean_logdev = mean(C_agg_logdev) * 100;
-    Diagnostics.firstorder_C_std = std(C_agg_logdev) * 100;
-    Diagnostics.firstorder_approx_order = 1;
-    Diagnostics.firstorder_Y_mean_logdev = mean(GDP_agg_logdev) * 100;
-    Diagnostics.firstorder_Y_std = std(GDP_agg_logdev) * 100;
-    Diagnostics.firstorder_L_mean_logdev = mean(L_agg_logdev) * 100;
-    Diagnostics.firstorder_I_mean_logdev = mean(I_agg_logdev) * 100;
-    Diagnostics.firstorder_M_mean_logdev = mean(M_agg_logdev) * 100;
-end
-
-if isfield(ModelData_simulation, 'SecondOrder') && isfield(ModelData_simulation.SecondOrder, 'shocks_simul')
-    Diagnostics.has_secondorder = true;
-    simul_2nd = ModelData_simulation.SecondOrder.shocks_simul;
-    [C_agg_logdev, I_agg_logdev, GDP_agg_logdev, L_agg_logdev, M_agg_logdev] = ...
-        compute_exact_aggregate_logdevs(simul_2nd, idx, policies_ss, endostates_ss);
-
-    Diagnostics.secondorder_C_mean_logdev = mean(C_agg_logdev) * 100;
-    Diagnostics.secondorder_C_std = std(C_agg_logdev) * 100;
-    Diagnostics.secondorder_Y_mean_logdev = mean(GDP_agg_logdev) * 100;
-    Diagnostics.secondorder_Y_std = std(GDP_agg_logdev) * 100;
-    Diagnostics.secondorder_L_mean_logdev = mean(L_agg_logdev) * 100;
-    Diagnostics.secondorder_I_mean_logdev = mean(I_agg_logdev) * 100;
-    Diagnostics.secondorder_M_mean_logdev = mean(M_agg_logdev) * 100;
-end
-
-if has_pf
-    simul_pf = ModelData_simulation.PerfectForesight.shocks_simul;
-    [C_agg_logdev, I_agg_logdev, GDP_agg_logdev, L_agg_logdev, M_agg_logdev] = ...
-        compute_exact_aggregate_logdevs(simul_pf, idx, policies_ss, endostates_ss);
-
-    Diagnostics.pf_C_mean_logdev = mean(C_agg_logdev) * 100;
-    Diagnostics.pf_C_std = std(C_agg_logdev) * 100;
-    Diagnostics.pf_Y_mean_logdev = mean(GDP_agg_logdev) * 100;
-    Diagnostics.pf_Y_std = std(GDP_agg_logdev) * 100;
-    Diagnostics.pf_L_mean_logdev = mean(L_agg_logdev) * 100;
-    Diagnostics.pf_I_mean_logdev = mean(I_agg_logdev) * 100;
-    Diagnostics.pf_M_mean_logdev = mean(M_agg_logdev) * 100;
-end
-
-if isfield(ModelData_simulation, 'MITShocks') && isfield(ModelData_simulation.MITShocks, 'shocks_simul')
-    Diagnostics.has_mit = true;
-    simul_mit = ModelData_simulation.MITShocks.shocks_simul;
-    [C_agg_logdev, I_agg_logdev, GDP_agg_logdev, L_agg_logdev, M_agg_logdev] = ...
-        compute_exact_aggregate_logdevs(simul_mit, idx, policies_ss, endostates_ss);
-
-    Diagnostics.mit_C_mean_logdev = mean(C_agg_logdev) * 100;
-    Diagnostics.mit_C_std = std(C_agg_logdev) * 100;
-    Diagnostics.mit_Y_mean_logdev = mean(GDP_agg_logdev) * 100;
-    Diagnostics.mit_Y_std = std(GDP_agg_logdev) * 100;
-    Diagnostics.mit_L_mean_logdev = mean(L_agg_logdev) * 100;
-    Diagnostics.mit_I_mean_logdev = mean(I_agg_logdev) * 100;
-    Diagnostics.mit_M_mean_logdev = mean(M_agg_logdev) * 100;
-end
-
-if Diagnostics.has_firstorder && Diagnostics.has_pf
-    Diagnostics.precautionary_C = Diagnostics.pf_C_mean_logdev - Diagnostics.firstorder_C_mean_logdev;
-    Diagnostics.precautionary_Y = Diagnostics.pf_Y_mean_logdev - Diagnostics.firstorder_Y_mean_logdev;
-    Diagnostics.vol_diff_C = Diagnostics.pf_C_std - Diagnostics.firstorder_C_std;
-    Diagnostics.vol_diff_Y = Diagnostics.pf_Y_std - Diagnostics.firstorder_Y_std;
-end
 
 [first_irf_result, ~] = get_first_valid_irf_result(AllShockResults);
 if ~isempty(first_irf_result)

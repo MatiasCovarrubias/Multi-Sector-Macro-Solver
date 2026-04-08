@@ -31,11 +31,11 @@ config.mit_solver_mode = 'rolling';
 config.smooth = false;
 config.wds = true;
 config.covariance_scale = 0.0;
-config.save_results = true;
+config.save_results = false;
 config.force_recalibrate = false;
 
 config.date = "_April_2026";
-config.exp_label = "_GO_noVA_newwds_v2_locl";
+config.exp_label = "_final";
 
 config.gridpoints = 4;
 config.sol_guess_file = '';

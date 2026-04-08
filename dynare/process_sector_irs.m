@@ -81,7 +81,7 @@ print_irf_statistics_summary(Stats, availability, n_analyzed, opts);
 %% Build output structure
 Results = struct();
 Results.metadata = build_irf_artifact_metadata(opts, labels, availability, IRFs);
-Results.entries = build_irf_entries(IRFs);
+Results.entries = finalize_irf_entries(IRFs);
 Results.summary_stats = build_irf_summary_stats(Stats);
 Results.labels = labels;
 Results.shock_description = opts.shock_description;
@@ -111,8 +111,6 @@ function context = build_ir_context(ModData, DynareResults, params)
 context = struct();
 context.policies_ss = ModData.policies_ss;
 context.k_ss = ModData.endostates_ss;
-context.utility_intratemp_ss = DynareResults.utility_intratemp_ss;
-context.steady_state = DynareResults.steady_state;
 context.n_sectors = params.n_sectors;
 context.R = get_ir_row_map();
 end
@@ -160,15 +158,15 @@ sector_stats = compute_sector_peak_stats(irs_1st, irs_2nd, irs_pf, shock_sign, c
 IRFEntry = struct();
 IRFEntry.sector_idx = sector_idx;
 IRFEntry.client_idx = client_idx;
-IRFEntry.IRSFirstOrder = irs_1st;
-IRFEntry.IRSSecondOrder = irs_2nd;
-IRFEntry.IRSPerfectForesight = irs_pf;
+IRFEntry.first_order = irs_1st;
+IRFEntry.second_order = irs_2nd;
+IRFEntry.perfect_foresight = irs_pf;
 IRFEntry.sectoral_loglin = sectoral_loglin;
 IRFEntry.sectoral_secondorder = sectoral_2nd;
 IRFEntry.sectoral_determ = sectoral_determ;
-IRFEntry.AggregateFirstOrder = build_aggregate_irf_block(irs_1st, sectoral_loglin, context);
-IRFEntry.AggregateSecondOrder = build_aggregate_irf_block(irs_2nd, sectoral_2nd, context);
-IRFEntry.AggregatePerfectForesight = build_aggregate_irf_block(irs_pf, sectoral_determ, context);
+IRFEntry.aggregate_first_order = build_aggregate_irf_block(irs_1st, context);
+IRFEntry.aggregate_second_order = build_aggregate_irf_block(irs_2nd, context);
+IRFEntry.aggregate_perfect_foresight = build_aggregate_irf_block(irs_pf, context);
 end
 
 function [IRS, sectoral_data] = maybe_process_irf( ...
@@ -182,11 +180,10 @@ end
 
 dynare_simul = DynareResults.(field_name){idx_pos};
 [IRS, sectoral_data] = process_ir_data(dynare_simul, sector_idx, client_idx, params, ...
-    context.steady_state, context.n_sectors, context.k_ss, context.utility_intratemp_ss, ...
-    context.policies_ss);
+    context.n_sectors, context.k_ss, context.policies_ss);
 end
 
-function AggregateIRF = build_aggregate_irf_block(IRS, sectoral_data, context)
+function AggregateIRF = build_aggregate_irf_block(IRS, context)
 if isempty(IRS)
     AggregateIRF = [];
     return;
@@ -211,12 +208,18 @@ if ~isempty(explicit_sign)
     return;
 end
 
+reference_irf = [];
 if ~isempty(irs_1st)
     reference_irf = irs_1st;
 elseif ~isempty(irs_2nd)
     reference_irf = irs_2nd;
-else
+elseif ~isempty(irs_pf)
     reference_irf = irs_pf;
+end
+
+if isempty(reference_irf)
+    shock_sign = -1;
+    return;
 end
 
 if reference_irf(R.A, 1) > 1
@@ -361,45 +364,45 @@ end
 end
 
 function call_graphirs_for_sector(IRFEntry, labels_single, ax, opts, graph_opts, availability)
-irs_1st = {IRFEntry.IRSFirstOrder};
-irs_2nd = {IRFEntry.IRSSecondOrder};
-irs_pf = {IRFEntry.IRSPerfectForesight};
+irs_1st = {IRFEntry.first_order};
+irs_2nd = {IRFEntry.second_order};
+irs_pf = {IRFEntry.perfect_foresight};
 aggregate_irs = struct( ...
     'series_1', [], ...
     'series_2', [], ...
     'series_3', []);
 
 if availability.has_determ && availability.has_1storder && availability.has_2ndorder
-    aggregate_irs.series_1 = {IRFEntry.AggregatePerfectForesight};
-    aggregate_irs.series_2 = {IRFEntry.AggregateFirstOrder};
-    aggregate_irs.series_3 = {IRFEntry.AggregateSecondOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_perfect_foresight};
+    aggregate_irs.series_2 = {IRFEntry.aggregate_first_order};
+    aggregate_irs.series_3 = {IRFEntry.aggregate_second_order};
     GraphIRs(irs_pf, irs_1st, irs_2nd, ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {}, aggregate_irs);
 elseif availability.has_determ && availability.has_1storder
-    aggregate_irs.series_1 = {IRFEntry.AggregatePerfectForesight};
-    aggregate_irs.series_2 = {IRFEntry.AggregateFirstOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_perfect_foresight};
+    aggregate_irs.series_2 = {IRFEntry.aggregate_first_order};
     GraphIRs(irs_pf, irs_1st, [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {}, aggregate_irs);
 elseif availability.has_determ && availability.has_2ndorder
-    aggregate_irs.series_1 = {IRFEntry.AggregatePerfectForesight};
-    aggregate_irs.series_2 = {IRFEntry.AggregateSecondOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_perfect_foresight};
+    aggregate_irs.series_2 = {IRFEntry.aggregate_second_order};
     GraphIRs(irs_pf, irs_2nd, [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {'Perfect Foresight', 'Second-Order'}, aggregate_irs);
 elseif availability.has_1storder && availability.has_2ndorder
-    aggregate_irs.series_1 = {IRFEntry.AggregateFirstOrder};
-    aggregate_irs.series_2 = {IRFEntry.AggregateSecondOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_first_order};
+    aggregate_irs.series_2 = {IRFEntry.aggregate_second_order};
     GraphIRs(irs_1st, irs_2nd, [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {'First-Order', 'Second-Order'}, aggregate_irs);
 elseif availability.has_determ
-    aggregate_irs.series_1 = {IRFEntry.AggregatePerfectForesight};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_perfect_foresight};
     GraphIRs(irs_pf, [], [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {'Perfect Foresight'}, aggregate_irs);
 elseif availability.has_1storder
-    aggregate_irs.series_1 = {IRFEntry.AggregateFirstOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_first_order};
     GraphIRs(irs_1st, [], [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {'First-Order'}, aggregate_irs);
 elseif availability.has_2ndorder
-    aggregate_irs.series_1 = {IRFEntry.AggregateSecondOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_second_order};
     GraphIRs(irs_2nd, [], [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {'Second-Order'}, aggregate_irs);
 end
@@ -456,7 +459,7 @@ end
 ir_horizon = 0;
 for i = 1:numel(IRFs)
     entry = IRFs{i};
-    candidate_fields = {'IRSFirstOrder', 'IRSSecondOrder', 'IRSPerfectForesight'};
+    candidate_fields = {'first_order', 'second_order', 'perfect_foresight'};
     for j = 1:numel(candidate_fields)
         field_name = candidate_fields{j};
         if isfield(entry, field_name) && ~isempty(entry.(field_name))
@@ -467,40 +470,17 @@ for i = 1:numel(IRFs)
 end
 end
 
-function entries = build_irf_entries(IRFs)
-entries = struct('sector_idx', {}, 'client_idx', {}, 'first_order', {}, ...
-    'second_order', {}, 'perfect_foresight', {}, 'sectoral_loglin', {}, ...
-    'sectoral_secondorder', {}, ...
-    'sectoral_determ', {}, 'aggregate_first_order', {}, ...
-    'aggregate_second_order', {}, 'aggregate_perfect_foresight', {});
-
-for i = 1:numel(IRFs)
-    legacy_entry = IRFs{i};
-    entries(i).sector_idx = legacy_entry.sector_idx;
-    entries(i).client_idx = legacy_entry.client_idx;
-    entries(i).first_order = legacy_entry.IRSFirstOrder;
-    entries(i).second_order = legacy_entry.IRSSecondOrder;
-    entries(i).perfect_foresight = legacy_entry.IRSPerfectForesight;
-
-    if isfield(legacy_entry, 'sectoral_loglin')
-        entries(i).sectoral_loglin = legacy_entry.sectoral_loglin;
-    end
-    if isfield(legacy_entry, 'sectoral_secondorder')
-        entries(i).sectoral_secondorder = legacy_entry.sectoral_secondorder;
-    end
-    if isfield(legacy_entry, 'sectoral_determ')
-        entries(i).sectoral_determ = legacy_entry.sectoral_determ;
-    end
-    if isfield(legacy_entry, 'AggregateFirstOrder')
-        entries(i).aggregate_first_order = legacy_entry.AggregateFirstOrder;
-    end
-    if isfield(legacy_entry, 'AggregateSecondOrder')
-        entries(i).aggregate_second_order = legacy_entry.AggregateSecondOrder;
-    end
-    if isfield(legacy_entry, 'AggregatePerfectForesight')
-        entries(i).aggregate_perfect_foresight = legacy_entry.AggregatePerfectForesight;
-    end
+function entries = finalize_irf_entries(IRFs)
+if isempty(IRFs)
+    entries = struct('sector_idx', {}, 'client_idx', {}, 'first_order', {}, ...
+        'second_order', {}, 'perfect_foresight', {}, 'sectoral_loglin', {}, ...
+        'sectoral_secondorder', {}, 'sectoral_determ', {}, ...
+        'aggregate_first_order', {}, 'aggregate_second_order', {}, ...
+        'aggregate_perfect_foresight', {});
+    return;
 end
+
+entries = vertcat(IRFs{:});
 end
 
 function summary_stats = build_irf_summary_stats(Stats)

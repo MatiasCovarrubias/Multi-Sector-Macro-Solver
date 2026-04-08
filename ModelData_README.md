@@ -27,7 +27,7 @@ Core model object: metadata, calibration, steady state, solution views, summary 
 | `metadata.n_shocks` | int | Number of shock configurations |
 | `metadata.run_flags` | struct | Final run-status flags: `{has_1storder, has_2ndorder, has_pf, has_mit}` |
 | `metadata.has_irfs` | logical | Whether IRFs were packaged for this run |
-| `metadata.has_diagnostics` | logical | Whether `ModelData.Diagnostics` is attached |
+| `metadata.has_diagnostics` | logical | Whether the compact IRF summary diagnostics are attached in `ModelData.Diagnostics` |
 | `calibration` | struct | Full calibration data |
 | `params` | struct | Model parameters |
 | `EmpiricalTargets` | struct | Empirical target moments |
@@ -51,7 +51,7 @@ Core model object: metadata, calibration, steady state, solution views, summary 
 | `Statistics.SecondOrder` | struct | Second-order simulation summary stats |
 | `Statistics.PerfectForesight` | struct | Perfect-foresight simulation summary stats |
 | `Statistics.MITShocks` | struct | MIT-shocks simulation summary stats |
-| `Diagnostics` | struct | Diagnostics |
+| `Diagnostics` | struct | Compact IRF amplification summary used by the end-of-run summary table |
 
 ## `ModelData_simulation`
 
@@ -92,6 +92,7 @@ Each of `FirstOrder`, `SecondOrder`, `PerfectForesight`, and `MITShocks` uses th
 | `<Method>.T_active` | int | Active-shock periods |
 | `<Method>.T_total` | int | `burn_in + T_active + burn_out` |
 | `<Method>.summary_stats` | struct | Simulation summary stats |
+| `<Method>.aggregate_series` | struct | Canonical aggregate simulation series stored as deviations from deterministic steady state |
 
 ### Window conventions
 
@@ -115,9 +116,17 @@ The common timing fields are:
 
 Simulation-side aggregate moments are computed from:
 
-1. Reconstruct aggregate `C`, `I`, `GDP`, `L`, and `K` in levels period by period.
-2. Convert them to `log(X_t) - log(X_ss_det)`.
-3. Compute moments on `shocks_simul` only.
+1. Read aggregate `C`, `I`, `GDP`, `L`, `K`, and `utility_intratemp` directly from the Dynare aggregate endogenous-variable rows.
+2. Convert `C`, `I`, `GDP`, `L`, and `K` to `log(X_t) - log(X_ss_det)`.
+3. Convert `utility_intratemp` to deviation from its deterministic steady-state policy value.
+4. Reconstruct aggregate `M` separately, because it is not stored as its own aggregate endogenous variable.
+5. Compute moments on `shocks_simul` only.
+
+The stored `aggregate_series` blocks follow the same canonical convention used by the aggregate moment code:
+
+- `C`, `I`, `GDP`, `L`, and `K` are stored as `log(X_t) - log(X_ss_det)`
+- `utility_intratemp` is stored as deviation from its deterministic steady-state policy value
+- each series is stored by window (`burnin`, `active`, `burnout`) and as a concatenated `full` path
 
 Sectoral value added in the moment code is also intended to use fixed steady-state prices:
 
@@ -204,9 +213,9 @@ Each entry is a struct with:
 | `first_order` | matrix `[29 × T]` | First-order IRF |
 | `second_order` | matrix `[29 × T]` | Second-order IRF |
 | `perfect_foresight` | matrix `[29 × T]` | Perfect-foresight IRF |
-| `sectoral_loglin` | struct | Full-sector first-order log-deviation blocks used for re-aggregation |
-| `sectoral_secondorder` | struct | Full-sector second-order log-deviation blocks used for re-aggregation |
-| `sectoral_determ` | struct | Full-sector perfect-foresight log-deviation blocks used for re-aggregation |
+| `sectoral_loglin` | struct | Full-sector first-order log-deviation blocks retained for compatibility/debugging |
+| `sectoral_secondorder` | struct | Full-sector second-order log-deviation blocks retained for compatibility/debugging |
+| `sectoral_determ` | struct | Full-sector perfect-foresight log-deviation blocks retained for compatibility/debugging |
 | `aggregate_first_order` | struct | Stored aggregate first-order IR series |
 | `aggregate_second_order` | struct | Stored aggregate second-order IR series |
 | `aggregate_perfect_foresight` | struct | Stored aggregate perfect-foresight IR series |
@@ -232,7 +241,7 @@ Each `aggregate_*` block stores:
 - `L`
 - `K`
 
-Here `C`, `I`, `GDP`, `L`, and `K` are read directly from the Dynare aggregate endogenous variables, stored as log deviations from deterministic steady state. The `*_exp` fields are compatibility aliases for the same direct aggregate IR rows.
+Here `C`, `I`, `GDP`, `L`, and `K` are read directly from the Dynare aggregate endogenous variables, stored as log deviations from deterministic steady state. The `*_exp` fields are compatibility aliases for the same direct aggregate IR rows. The `sectoral_*` payloads are not used to rebuild these aggregate IRs in the current packaging path.
 
 ### IRF row map
 
