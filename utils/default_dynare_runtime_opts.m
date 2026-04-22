@@ -10,6 +10,7 @@ defaults.run_pf_irs = true;
 defaults.run_pf_simul = false;
 defaults.run_mit_shocks_simul = false;
 defaults.sector_indices = [1];
+defaults.shock_scaling = struct('sectors', [], 'factor', 1.0);
 defaults.verbose = true;
 defaults.continue_on_failure = false;
 defaults.ir_horizon = 200;

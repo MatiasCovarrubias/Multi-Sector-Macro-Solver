@@ -128,7 +128,7 @@ if opts.run_firstorder_simul
     SolData.policies_sd = sqrt(variables_var(idx.n_states+1:idx.n_dynare));
 
     simul_block_1st.summary_stats = build_simulation_summary( ...
-        simul_block_1st, idx, policies_ss, n_sectors, endostates_ss, 'First-order');
+        simul_block_1st, idx, policies_ss, n_sectors, endostates_ss, 'First-order', opts);
 
     Results.SolData = SolData;
     Results.SimulFirstOrder = simul_block_1st;
@@ -164,7 +164,7 @@ if opts.run_secondorder_simul
     Shocks.usage.SecondOrder = struct('start', 1, 'end', simul_cfg.T_active);
 
     simul_block_2nd.summary_stats = build_simulation_summary( ...
-        simul_block_2nd, idx, policies_ss, n_sectors, endostates_ss, 'Second-order');
+        simul_block_2nd, idx, policies_ss, n_sectors, endostates_ss, 'Second-order', opts);
 
     Results.SimulSecondOrder = simul_block_2nd;
 
@@ -205,7 +205,7 @@ if opts.run_pf_irs
     announce_runtime_step(runtime_ctx, sprintf('Run perfect-foresight IRs (H=%d)', opts.ir_horizon));
     if v, fprintf('\nPF IRFs (H=%d)...\n', opts.ir_horizon); end
     tic;
-    Results.IRSPerfectForesight_raw = run_pf_irfs(session, params, opts);
+    [Results.IRSPerfectForesight_raw, Results.pf_irf_cache] = run_pf_irfs(session, params, opts);
     if v, fprintf('PF IRFs done (%.1fs)\n', toc); end
 end
 
@@ -326,23 +326,115 @@ session.steady_state_aggregates = collect_steady_state_aggregates(ModData);
 setup_dynare_runtime(session, ModData, params, opts);
 end
 
-function IRSDeterm_all = run_pf_irfs(session, params, opts)
-ir_simul_periods = opts.ir_horizon - 2;
-generate_determ_irs_mod(session.dynare_folder, ir_simul_periods);
+function [IRSDeterm_all, pf_irf_cache] = run_pf_irfs(session, params, opts)
+pf_irf_cache = get_pf_irf_session_cache(opts, session);
+pf_irf_session = pf_irf_cache.session;
 IRSDeterm_all = cell(numel(opts.sector_indices), 1);
 
 for ii = 1:numel(opts.sector_indices)
     sector_idx = opts.sector_indices(ii);
-    shocksim_0 = zeros([session.n_sectors, 1]);
-    shocksim_0(sector_idx) = -params.IRshock;
-    workspace_vars = struct();
-    workspace_vars.shocksim_0 = shocksim_0;
-    workspace_vars.shockssim_ir = zeros([opts.ir_horizon, session.n_sectors]);
-
-    dynare_irf_paths = run_generated_dynare_job(session, 'determ_irs_generated', workspace_vars);
-    IRSDeterm_all{ii} = normalize_simulation_matrix(dynare_irf_paths, session.idx.n_dynare, 'PF IRF simulation');
+    IRSDeterm_all{ii} = solve_pf_irf_for_sector( ...
+        pf_irf_session, session.idx, sector_idx, params.IRshock);
     if opts.verbose, fprintf('  Sector %d done\n', sector_idx); end
 end
+end
+
+function pf_irf_cache = get_pf_irf_session_cache(opts, session)
+signature = build_pf_irf_session_signature(session, opts);
+cached_entry = get_cached_pf_irf_session(opts);
+
+if is_valid_pf_irf_session_cache(cached_entry, signature)
+    pf_irf_cache = cached_entry;
+    pf_irf_cache.was_reused = true;
+    return;
+end
+
+pf_irf_cache = struct();
+pf_irf_cache.signature = signature;
+pf_irf_cache.session = initialize_pf_irf_session(session, opts);
+pf_irf_cache.was_reused = false;
+end
+
+function cached_entry = get_cached_pf_irf_session(opts)
+cached_entry = [];
+
+if ~isfield(opts, 'solution_cache') || isempty(opts.solution_cache)
+    return;
+end
+
+if ~isfield(opts.solution_cache, 'pf_irf')
+    return;
+end
+
+candidate = opts.solution_cache.pf_irf;
+required_fields = {'signature', 'session'};
+if isstruct(candidate) && all(isfield(candidate, required_fields))
+    cached_entry = candidate;
+end
+end
+
+function tf = is_valid_pf_irf_session_cache(candidate, signature)
+required_session_fields = {'ir_horizon', 'n_sectors', 'zero_exo', ...
+    'oo_template', 'M', 'options', 'solver_tolf'};
+tf = isstruct(candidate) && ...
+    isfield(candidate, 'signature') && ...
+    isfield(candidate, 'session') && ...
+    isstruct(candidate.session) && ...
+    all(isfield(candidate.session, required_session_fields)) && ...
+    isequaln(candidate.signature, signature);
+end
+
+function signature = build_pf_irf_session_signature(session, opts)
+signature = struct();
+signature.ir_horizon = opts.ir_horizon;
+signature.model_type = char(opts.model_type);
+signature.n_sectors = session.n_sectors;
+signature.policies_ss = session.policies_ss(:);
+signature.endostates_ss = session.endostates_ss(:);
+signature.steady_state_aggregates = session.steady_state_aggregates;
+signature.model_parameters = session.model_parameters;
+end
+
+function pf_irf_session = initialize_pf_irf_session(session, opts)
+ir_horizon = opts.ir_horizon;
+ir_simul_periods = ir_horizon - 2;
+generate_determ_irs_mod(session.dynare_folder, ir_simul_periods);
+
+workspace_vars = struct();
+workspace_vars.shocksim_0 = zeros([session.n_sectors, 1]);
+workspace_vars.shockssim_ir = zeros([ir_horizon, session.n_sectors]);
+assign_base_workspace_vars(workspace_vars);
+evalc('run_dynare_mod(session.dynare_folder, ''determ_irs_generated'');');
+
+pf_irf_session = struct();
+pf_irf_session.ir_horizon = ir_horizon;
+pf_irf_session.n_sectors = session.n_sectors;
+pf_irf_session.zero_exo = workspace_vars.shockssim_ir;
+pf_irf_session.oo_template = read_base_workspace_var('oo_');
+pf_irf_session.M = read_base_workspace_var('M_');
+pf_irf_session.options = read_base_workspace_var('options_');
+pf_irf_session.solver_tolf = 1e-3;
+end
+
+function dynare_irf_paths = solve_pf_irf_for_sector(pf_irf_session, idx, sector_idx, ir_shock)
+oo_local = pf_irf_session.oo_template;
+a_init = zeros(pf_irf_session.n_sectors, 1);
+a_init(sector_idx) = -ir_shock;
+oo_local.steady_state(idx.a(1):idx.a(2)) = a_init;
+
+options_local = pf_irf_session.options;
+oo_local = perfect_foresight_setup(pf_irf_session.M, options_local, oo_local);
+oo_local.exo_simul = pf_irf_session.zero_exo;
+options_local.dynatol.f = pf_irf_session.solver_tolf;
+options_local.endogenous_terminal_period = true;
+[~, oo_local, ~] = evalc('perfect_foresight_solver(pf_irf_session.M, options_local, oo_local);');
+
+assert(isstruct(oo_local) && isfield(oo_local, 'endo_simul') && ~isempty(oo_local.endo_simul), ...
+    'run_dynare_analysis:MissingPFIRFOutput', ...
+    'Perfect-foresight IR solve did not populate oo_local.endo_simul.');
+
+dynare_irf_paths = normalize_simulation_matrix( ...
+    oo_local.endo_simul, idx.n_dynare, 'PF IRF simulation');
 end
 
 function [Results, Shocks] = run_pf_simulation(Results, Shocks, shocks_active, session, idx, ...
@@ -364,7 +456,7 @@ try
         dynare_simul_pf_raw, simul_cfg, idx, 'PF simulation');
     simul_block_pf.summary_stats = build_simulation_summary( ...
         simul_block_pf, session.idx, policies_ss, session.n_sectors, endostates_ss, ...
-        'Perfect foresight');
+        'Perfect foresight', opts);
 
     Results.SimulPerfectForesight = simul_block_pf;
 catch ME
@@ -403,7 +495,7 @@ try
         dynare_simul_mit_raw, simul_cfg, idx, 'MIT simulation');
     simul_block_mit.summary_stats = build_simulation_summary( ...
         simul_block_mit, session.idx, policies_ss, session.n_sectors, endostates_ss, ...
-        'MIT shocks');
+        'MIT shocks', opts);
 
     Results.SimulMITShocks = simul_block_mit;
 catch ME
@@ -1055,9 +1147,10 @@ end
 end
 
 function summary_stats = build_simulation_summary(simul_block, idx, policies_ss, ...
-        n_sectors, endostates_ss, label)
+        n_sectors, endostates_ss, label, opts)
 states_simul = simul_block.shocks_simul(1:idx.n_states, :);
 policies_simul = simul_block.shocks_simul(idx.n_states+1:end, :);
+shock_scaling = resolve_shock_scaling(opts);
 
 summary_stats = struct();
 summary_stats.sample_window = 'shocks_simul';
@@ -1072,5 +1165,12 @@ summary_stats.policies_mean = mean(policies_simul, 2);
 summary_stats.policies_std = std(policies_simul, 0, 2);
 summary_stats.ModelStats = compute_model_statistics( ...
     simul_block.shocks_simul, idx, policies_ss, n_sectors, endostates_ss, ...
-    label, 'shocks_simul');
+    label, 'shocks_simul', shock_scaling);
+end
+
+function shock_scaling = resolve_shock_scaling(opts)
+shock_scaling = struct('sectors', [], 'factor', 1.0);
+if isstruct(opts) && isfield(opts, 'shock_scaling') && isstruct(opts.shock_scaling)
+    shock_scaling = opts.shock_scaling;
+end
 end

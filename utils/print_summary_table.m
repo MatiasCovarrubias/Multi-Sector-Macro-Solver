@@ -13,6 +13,7 @@ fprintf('Experiment: %s\n', Summary.save_label);
 
 print_model_vs_data_table(ms, Summary.empirical_targets, Summary.config);
 print_aggregate_moment_tables(ms, Summary.theoretical_stats);
+print_scaled_sector_volatility_table(ms, Summary.sector_labels, Summary.config);
 print_irf_amplification_table(diag);
 
 fprintf('================================================================================\n\n');
@@ -110,8 +111,32 @@ for i = 1:size(aggregates, 1)
 end
 end
 
+function print_scaled_sector_volatility_table(ms, sector_labels, config)
+fprintf('\n[3] SCALED SECTOR VOLATILITIES\n');
+
+configured_sectors = get_configured_scaled_sectors(config);
+if isempty(configured_sectors)
+    fprintf('    (No scaled sectors configured)\n');
+    return;
+end
+
+fprintf('    %-5s %-30s %-8s%14s%14s\n', ...
+    'Idx', 'Sector', 'Method', 'Std log(P_j)', 'Std log(TFP_j)');
+fprintf('    %s\n', repmat('-', 1, 75));
+
+printed_rows = 0;
+printed_rows = printed_rows + print_scaled_sector_rows(ms.has_ms1, '1st', ms.ms1, sector_labels);
+printed_rows = printed_rows + print_scaled_sector_rows(ms.has_ms2, '2nd', ms.ms2, sector_labels);
+printed_rows = printed_rows + print_scaled_sector_rows(ms.has_msPF, 'PF', ms.msPF, sector_labels);
+printed_rows = printed_rows + print_scaled_sector_rows(ms.has_msMIT, 'MIT', ms.msMIT, sector_labels);
+
+if printed_rows == 0
+    fprintf('    (No scaled-sector volatility statistics available)\n');
+end
+end
+
 function print_irf_amplification_table(diag)
-fprintf('\n[3] IRF AMPLIFICATION\n');
+fprintf('\n[4] IRF AMPLIFICATION\n');
 
 if isempty(fieldnames(diag)) || ~isfield(diag, 'has_irfs') || ~diag.has_irfs
     fprintf('    (No IRF results available)\n');
@@ -213,5 +238,71 @@ if ~isfinite(value)
 end
 
 out = sprintf(['%+0.', num2str(decimals), 'f%%'], value);
+end
+
+function printed_rows = print_scaled_sector_rows(is_available, method_label, method_stats, sector_labels)
+printed_rows = 0;
+if ~is_available || ~has_scaled_sector_volatility(method_stats)
+    return;
+end
+
+vol = method_stats.scaled_sector_volatility;
+for i = 1:numel(vol.sector_indices)
+    sector_idx = vol.sector_indices(i);
+    fprintf('    %-5d %-30s %-8s%14s%14s\n', ...
+        sector_idx, ...
+        truncate_label(get_sector_label(sector_labels, sector_idx), 30), ...
+        method_label, ...
+        format_percent(100 * vol.sigma_logP(i), 3), ...
+        format_percent(100 * vol.sigma_logTFP(i), 3));
+    printed_rows = printed_rows + 1;
+end
+end
+
+function tf = has_scaled_sector_volatility(method_stats)
+tf = isstruct(method_stats) && isfield(method_stats, 'scaled_sector_volatility') && ...
+    isstruct(method_stats.scaled_sector_volatility) && ...
+    isfield(method_stats.scaled_sector_volatility, 'sector_indices') && ...
+    ~isempty(method_stats.scaled_sector_volatility.sector_indices);
+end
+
+function sector_label = get_sector_label(sector_labels, sector_idx)
+sector_label = sprintf('Sector %d', sector_idx);
+if iscell(sector_labels) && sector_idx >= 1 && sector_idx <= numel(sector_labels) && ...
+        ~isempty(sector_labels{sector_idx})
+    sector_label = sector_labels{sector_idx};
+end
+end
+
+function configured_sectors = get_configured_scaled_sectors(config)
+configured_sectors = [];
+if ~isstruct(config) || ~isfield(config, 'shock_scaling') || ...
+        ~isstruct(config.shock_scaling) || ~isfield(config.shock_scaling, 'sectors') || ...
+        isempty(config.shock_scaling.sectors)
+    return;
+end
+
+configured_sectors = unique(round(config.shock_scaling.sectors(:)'), 'stable');
+configured_sectors = configured_sectors(isfinite(configured_sectors));
+end
+
+function out = truncate_label(label, max_len)
+if isstring(label)
+    out = char(label);
+else
+    out = label;
+end
+
+if numel(out) <= max_len
+    return;
+end
+
+keep_len = max(max_len - 3, 0);
+if keep_len == 0
+    out = '';
+    return;
+end
+
+out = [out(1:keep_len) '...'];
 end
 

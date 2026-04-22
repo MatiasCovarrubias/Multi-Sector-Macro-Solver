@@ -104,6 +104,7 @@ cache = maybe_copy_solution(cache, RuntimeResults, ...
     {'oo_1st', 'M_1st', 'options_1st'}, 'first_order');
 cache = maybe_copy_solution(cache, RuntimeResults, ...
     {'oo_2nd', 'M_2nd', 'options_2nd'}, 'second_order');
+cache = maybe_copy_pf_irf_cache(cache, RuntimeResults);
 end
 
 function cache = maybe_copy_solution(cache, RuntimeResults, source_fields, target_field)
@@ -123,15 +124,34 @@ cache.(target_field) = struct( ...
     'options', values{3});
 end
 
+function cache = maybe_copy_pf_irf_cache(cache, RuntimeResults)
+if ~isfield(RuntimeResults, 'pf_irf_cache') || isempty(RuntimeResults.pf_irf_cache)
+    return;
+end
+
+candidate = RuntimeResults.pf_irf_cache;
+required_fields = {'signature', 'session'};
+if ~(isstruct(candidate) && all(isfield(candidate, required_fields)))
+    return;
+end
+
+if isfield(candidate, 'was_reused')
+    candidate = rmfield(candidate, 'was_reused');
+end
+
+cache.pf_irf = candidate;
+end
+
 function announce_cache_status(cache)
 has_first = isfield(cache, 'first_order');
 has_second = isfield(cache, 'second_order');
+has_pf = isfield(cache, 'pf_irf');
 
-if has_first || has_second
-    fprintf('[IRF] Reusing cached perturbation solutions: 1st=%s, 2nd=%s\n', ...
-        logical_str(has_first), logical_str(has_second));
+if has_first || has_second || has_pf
+    fprintf('[IRF] Reusing cached solutions: 1st=%s, 2nd=%s, PF=%s\n', ...
+        logical_str(has_first), logical_str(has_second), logical_str(has_pf));
 else
-    fprintf('[IRF] No cached perturbation solutions available; first requested shock will solve them once.\n');
+    fprintf('[IRF] No cached IR solutions available; first requested shock will solve them once.\n');
 end
 end
 

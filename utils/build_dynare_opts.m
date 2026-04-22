@@ -1,6 +1,7 @@
 function opts = build_dynare_opts(config, sector_indices, mode)
     opts = struct();
     opts.sector_indices = sector_indices;
+    opts.shock_scaling = config.shock_scaling;
     opts.verbose = true;
     opts.ir_horizon = config.ir_horizon;
     opts.rng_seed = config.rng_seed;

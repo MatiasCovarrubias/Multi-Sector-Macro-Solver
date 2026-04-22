@@ -1,10 +1,13 @@
-function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n_sectors, endostates_ss, sample_label, sample_window)
+function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n_sectors, endostates_ss, sample_label, sample_window, shock_scaling)
 
     if nargin < 6 || isempty(sample_label)
         sample_label = 'Simulation';
     end
     if nargin < 7 || isempty(sample_window)
         sample_window = 'shocks_simul';
+    end
+    if nargin < 8 || isempty(shock_scaling)
+        shock_scaling = struct('sectors', [], 'factor', 1.0);
     end
 
     %% Extract simulated series in model space
@@ -153,6 +156,8 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     sigma_VA_sectoral = std(va_sector_logdev, 0, 2)';
     sigma_L_sectoral = std(l_logdev, 0, 2)';
     sigma_I_sectoral = std(i_logdev, 0, 2)';
+    sigma_logP_sectoral = std(p_simul, 0, 2)';
+    sigma_logTFP_sectoral = std(a_simul, 0, 2)';
     sigma_VA_avg = sum(va_weights .* sigma_VA_sectoral);
     sigma_L_avg = sum(va_weights .* sigma_L_sectoral);
     sigma_I_avg = sum(va_weights .* sigma_I_sectoral);
@@ -167,6 +172,8 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     domar_simul = q_simul - repmat(gdp_va_agg_simul, n_sectors, 1);
     sigma_Domar_sectoral = std(domar_simul, 0, 2)';
     sigma_Domar_avg = sum(go_weights .* sigma_Domar_sectoral);
+    scaled_sector_volatility = build_scaled_sector_volatility( ...
+        shock_scaling, sigma_logP_sectoral, sigma_logTFP_sectoral, n_sectors);
 
     %% Pack output
     ModelStats = struct();
@@ -200,6 +207,8 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     ModelStats.sigma_VA_sectoral = sigma_VA_sectoral;
     ModelStats.sigma_L_avg = sigma_L_avg;
     ModelStats.sigma_I_avg = sigma_I_avg;
+    ModelStats.sigma_logP_sectoral = sigma_logP_sectoral;
+    ModelStats.sigma_logTFP_sectoral = sigma_logTFP_sectoral;
     ModelStats.sigma_L_avg_empweighted = sigma_L_avg_empweighted;
     ModelStats.sigma_I_avg_invweighted = sigma_I_avg_invweighted;
     ModelStats.sigma_Domar_avg = sigma_Domar_avg;
@@ -223,6 +232,7 @@ function ModelStats = compute_model_statistics(dynare_simul, idx, policies_ss, n
     ModelStats.go_weights = go_weights;
     ModelStats.emp_weights = emp_weights;
     ModelStats.inv_weights = inv_weights;
+    ModelStats.scaled_sector_volatility = scaled_sector_volatility;
 end
 
 function moments = compute_univariate_moments(x)
@@ -304,4 +314,39 @@ function [corr_matrix, avg] = safe_corr_matrix_rows(data)
     else
         avg = mean(values);
     end
+end
+
+function scaled_sector_volatility = build_scaled_sector_volatility(shock_scaling, sigma_logP_sectoral, sigma_logTFP_sectoral, n_sectors)
+sector_indices = normalize_scaled_sector_indices(shock_scaling, n_sectors);
+scaled_sector_volatility = struct( ...
+    'sector_indices', sector_indices, ...
+    'sigma_logP', sigma_logP_sectoral(sector_indices), ...
+    'sigma_logTFP', sigma_logTFP_sectoral(sector_indices), ...
+    'factor', get_shock_scaling_factor(shock_scaling));
+end
+
+function sector_indices = normalize_scaled_sector_indices(shock_scaling, n_sectors)
+sector_indices = [];
+if ~isstruct(shock_scaling) || ~isfield(shock_scaling, 'sectors') || isempty(shock_scaling.sectors)
+    return;
+end
+
+sector_indices = shock_scaling.sectors(:)';
+sector_indices = sector_indices(isfinite(sector_indices));
+sector_indices = round(sector_indices);
+sector_indices = sector_indices(sector_indices >= 1 & sector_indices <= n_sectors);
+if isempty(sector_indices)
+    return;
+end
+
+sector_indices = unique(sector_indices, 'stable');
+end
+
+function factor = get_shock_scaling_factor(shock_scaling)
+factor = NaN;
+if isstruct(shock_scaling) && isfield(shock_scaling, 'factor') && ...
+        isnumeric(shock_scaling.factor) && isscalar(shock_scaling.factor) && ...
+        isfinite(shock_scaling.factor)
+    factor = shock_scaling.factor;
+end
 end

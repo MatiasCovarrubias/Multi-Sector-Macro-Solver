@@ -51,7 +51,7 @@ Each file has a `use_defaults` boolean:
 
 Use:
 
-- `runtime_config.m` for experiment settings, Dynare flags, horizons, burn-in, burn-out, saving, shock sizes, and the simulation RNG seed (`rng_seed`)
+- `runtime_config.m` for experiment settings, Dynare flags, horizons, burn-in, burn-out, saving, shock sizes, shock covariance controls (`covariance_scale`, `shock_scaling`), and the simulation RNG seed (`rng_seed`)
 - `params_config.m` for model parameters
 
 The compatibility wrappers:

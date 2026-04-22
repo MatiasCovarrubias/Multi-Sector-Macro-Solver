@@ -23,6 +23,7 @@ run_firstorder_smoke(ModData, params, config);
 run_secondorder_smoke(ModData, params, config);
 run_runtime_validation_smoke(ModData, params, config);
 run_pf_irf_smoke(ModData, params, config);
+run_pf_irf_cache_reuse_smoke(ModData, params, config, labels, exp_paths);
 run_irf_pipeline_smoke(ModData, params, config, labels, exp_paths);
 run_pf_simulation_smoke(ModData, params, config);
 run_mit_smoke(ModData, params, config);
@@ -112,6 +113,41 @@ params.IRshock = config.shock_values(1).value;
 Results = run_dynare_analysis(ModData, params, opts);
 assert(isfield(Results, 'IRSPerfectForesight_raw'), 'Smoke test failed: missing PF IRFs.');
 assert(~isempty(Results.IRSPerfectForesight_raw), 'Smoke test failed: empty PF IRFs.');
+assert(isfield(Results, 'pf_irf_cache') && isstruct(Results.pf_irf_cache), ...
+    'Smoke test failed: missing PF IRF cache metadata.');
+assert_pf_irf_matches_generated_job(Results, ModData, params, opts);
+end
+
+function run_pf_irf_cache_reuse_smoke(ModData, params, config, labels, exp_paths)
+config_cache = config;
+config_cache.run_firstorder_irs = false;
+config_cache.run_secondorder_irs = false;
+config_cache.run_pf_irs = true;
+config_cache.run_firstorder_simul = false;
+config_cache.run_secondorder_simul = false;
+config_cache.run_pf_simul = false;
+config_cache.run_mit_shocks_simul = false;
+config_cache.shock_values = build_shock_values([5, 10]);
+
+n_shocks = numel(config_cache.shock_values);
+BaseResults = struct();
+AllShockResults = struct('DynareResults', {cell(n_shocks,1)}, ...
+    'ShockArtifacts', {cell(n_shocks,1)});
+
+[AllShockResults, ~] = run_irf_loop(config_cache, config_cache.sector_indices, ...
+    ModData, params, BaseResults, AllShockResults, exp_paths, labels);
+
+first_results = AllShockResults.DynareResults{1};
+second_results = AllShockResults.DynareResults{2};
+
+assert(isfield(first_results, 'pf_irf_cache') && ~isempty(first_results.pf_irf_cache), ...
+    'Smoke test failed: missing PF cache on first IRF shock.');
+assert(isfield(second_results, 'pf_irf_cache') && ~isempty(second_results.pf_irf_cache), ...
+    'Smoke test failed: missing PF cache on second IRF shock.');
+assert(~first_results.pf_irf_cache.was_reused, ...
+    'Smoke test failed: first PF IRF shock should initialize the cache.');
+assert(second_results.pf_irf_cache.was_reused, ...
+    'Smoke test failed: second PF IRF shock should reuse the cached PF session.');
 end
 
 function run_runtime_validation_smoke(ModData, params, config)
@@ -140,6 +176,8 @@ opts.run_mit_shocks_simul = false;
 params.IRshock = config.shock_values(1).value;
 
 DynareResults = run_dynare_analysis(ModData, params, opts);
+single_shock_config = config;
+single_shock_config.shock_values = config.shock_values(1);
 ir_opts = struct();
 ir_opts.plot_graphs = false;
 ir_opts.save_graphs = false;
@@ -155,14 +193,14 @@ IRFResults = process_sector_irs(DynareResults, params, ModData, labels, ir_opts)
 assert(isfield(IRFResults, 'entries'), 'Smoke test failed: missing canonical IR entries.');
 assert(isfield(IRFResults, 'summary_stats'), 'Smoke test failed: missing canonical IR summary_stats.');
 AllShockResults = struct('DynareResults', {{DynareResults}}, 'ShockArtifacts', {{IRFResults}});
-ModelData_IRs = build_ModelData_IRs(AllShockResults, config, strcat(config.date, config.exp_label), ...
-    config.sector_indices, numel(config.shock_values));
+ModelData_IRs = build_ModelData_IRs(AllShockResults, single_shock_config, ...
+    strcat(config.date, config.exp_label), config.sector_indices, 1);
 
 flags = struct('has_1storder', false, 'has_2ndorder', false, 'has_pf', false, 'has_mit', false);
 ModelData_IRs.metadata.run_flags = struct( ...
-    'has_1storder', logical(config.run_firstorder_irs), ...
-    'has_2ndorder', logical(config.run_secondorder_irs), ...
-    'has_pf', logical(config.run_pf_irs), ...
+    'has_1storder', logical(single_shock_config.run_firstorder_irs), ...
+    'has_2ndorder', logical(single_shock_config.run_secondorder_irs), ...
+    'has_pf', logical(single_shock_config.run_pf_irs), ...
     'has_mit', false);
 ModelData_IRs.metadata.has_irfs = true;
 validate_ModelData_IRs(ModelData_IRs, 'run_irf_pipeline_smoke');
@@ -288,4 +326,74 @@ else
 end
 assert(simul_block.burn_out == expected_burn_out, ...
     'Smoke test failed: burn_out mismatch.');
+end
+
+function assert_pf_irf_matches_generated_job(Results, ModData, params, opts)
+assert(~isempty(opts.sector_indices), ...
+    'Smoke test failed: PF IRF regression check requires at least one sector.');
+
+session = build_test_dynare_session(ModData, params);
+setup_dynare_runtime(session, ModData, params, opts);
+generate_determ_irs_mod(session.dynare_folder, opts.ir_horizon - 2);
+
+sector_idx = opts.sector_indices(1);
+shocksim_0 = zeros(session.n_sectors, 1);
+shocksim_0(sector_idx) = -params.IRshock;
+workspace_vars = struct( ...
+    'shocksim_0', shocksim_0, ...
+    'shockssim_ir', zeros([opts.ir_horizon, session.n_sectors]));
+
+legacy_output = run_generated_dynare_job(session, 'determ_irs_generated', workspace_vars);
+legacy_output = normalize_test_simulation_matrix( ...
+    legacy_output, session.idx.n_dynare, 'PF IRF regression legacy output');
+new_output = Results.IRSPerfectForesight_raw{1};
+
+assert(isequal(size(new_output), size(legacy_output)), ...
+    'Smoke test failed: PF IRF refactor changed the raw output shape.');
+
+max_diff = max(abs(new_output(:) - legacy_output(:)));
+assert(max_diff < 1e-8, ...
+    'Smoke test failed: PF IRF refactor deviates from legacy generated-job output.');
+end
+
+function session = build_test_dynare_session(ModData, params)
+session = struct();
+session.dynare_folder = fullfile(current_project_root(), 'dynare');
+session.verbose = false;
+session.n_sectors = params.n_sectors;
+session.idx = get_variable_indices(session.n_sectors);
+session.policies_ss = ModData.policies_ss;
+session.endostates_ss = ModData.endostates_ss;
+session.model_parameters = ModData.parameters;
+session.steady_state_aggregates = collect_test_steady_state_aggregates(ModData);
+end
+
+function aggregates = collect_test_steady_state_aggregates(ModData)
+aggregates = struct( ...
+    'C_ss', ModData.C_ss, ...
+    'L_ss', ModData.L_ss, ...
+    'GDP_ss', ModData.GDP_ss, ...
+    'I_ss', ModData.I_ss, ...
+    'K_ss', ModData.K_ss, ...
+    'utility_intratemp_ss', ModData.utility_intratemp_ss);
+end
+
+function simul = normalize_test_simulation_matrix(simul, expected_rows, context_label)
+if ~(isnumeric(simul) && ismatrix(simul))
+    error('run_smoke_tests:InvalidSimulationOutput', ...
+        '%s must be a numeric matrix.', context_label);
+end
+
+if size(simul, 1) == expected_rows
+    return;
+end
+
+if size(simul, 2) == expected_rows
+    simul = simul.';
+    return;
+end
+
+error('run_smoke_tests:SimulationRowMismatch', ...
+    '%s has size %d x %d; expected one dimension to equal %d endogenous variables.', ...
+    context_label, size(simul, 1), size(simul, 2), expected_rows);
 end

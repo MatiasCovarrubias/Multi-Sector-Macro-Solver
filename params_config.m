@@ -10,11 +10,13 @@ params.beta = 0.96;
 params.eps_l = 0.5;
 params.eps_c = 0.33;
 params.theta = 1;
-params.phi = 4.25;
+% params.phi = 4.25;
+params.phi = 2.0;
 params.sigma_c = 0.5;
 params.sigma_m = 0.001;
 params.sigma_q = 0.5;
-params.sigma_y = 0.8;
+% params.sigma_y = 0.6;
+params.sigma_y = 0.6;
 params.sigma_I = 0.5;
 params.sigma_l = 0.0475;
 
