@@ -66,7 +66,7 @@ for idx_pos = 1:n_analyzed
     [IRFs{idx_pos}, sector_stats] = process_single_sector_irf( ...
         idx_pos, sector_idx, client_idx, DynareResults, params, context, availability, opts);
     Stats = assign_sector_stats(Stats, idx_pos, sector_stats);
-    print_sector_peak_summary(sector_stats, availability);
+    print_sector_cir_summary(sector_stats, availability);
     maybe_save_intermediate_results(opts, idx_pos, IRFs, Stats);
 end
 
@@ -81,7 +81,7 @@ print_irf_statistics_summary(Stats, availability, n_analyzed, opts);
 %% Build output structure
 Results = struct();
 Results.metadata = build_irf_artifact_metadata(opts, labels, availability, IRFs);
-Results.entries = build_irf_entries(IRFs);
+Results.entries = finalize_irf_entries(IRFs);
 Results.summary_stats = build_irf_summary_stats(Stats);
 Results.labels = labels;
 Results.shock_description = opts.shock_description;
@@ -107,12 +107,10 @@ opts = set_default(opts, 'shock_description', '');
 opts = set_default(opts, 'shock_sign', []);
 end
 
-function context = build_ir_context(ModData, DynareResults, params)
+function context = build_ir_context(ModData, ~, params)
 context = struct();
 context.policies_ss = ModData.policies_ss;
 context.k_ss = ModData.endostates_ss;
-context.utility_intratemp_ss = DynareResults.utility_intratemp_ss;
-context.steady_state = DynareResults.steady_state;
 context.n_sectors = params.n_sectors;
 context.R = get_ir_row_map();
 end
@@ -127,22 +125,18 @@ end
 function Stats = initialize_irf_stats(n_analyzed, sector_indices)
 Stats = struct();
 Stats.sector_indices = sector_indices;
-Stats.peak_values_firstorder = zeros(n_analyzed, 1);
-Stats.peak_values_secondorder = zeros(n_analyzed, 1);
-Stats.peak_values_pf = zeros(n_analyzed, 1);
-Stats.peak_periods_firstorder = zeros(n_analyzed, 1);
-Stats.peak_periods_secondorder = zeros(n_analyzed, 1);
-Stats.peak_periods_pf = zeros(n_analyzed, 1);
-Stats.half_lives_firstorder = zeros(n_analyzed, 1);
-Stats.half_lives_secondorder = zeros(n_analyzed, 1);
-Stats.half_lives_pf = zeros(n_analyzed, 1);
-Stats.amplifications = zeros(n_analyzed, 1);
-Stats.amplifications_2nd = zeros(n_analyzed, 1);
-Stats.amplifications_rel = zeros(n_analyzed, 1);
+Stats.cir_values_firstorder = zeros(n_analyzed, 1);
+Stats.cir_values_secondorder = zeros(n_analyzed, 1);
+Stats.cir_values_pf = zeros(n_analyzed, 1);
+Stats.total_effect_signs_firstorder = zeros(n_analyzed, 1);
+Stats.total_effect_signs_secondorder = zeros(n_analyzed, 1);
+Stats.total_effect_signs_pf = zeros(n_analyzed, 1);
+Stats.nonlinear_amp_pf_vs_firstorder = NaN(n_analyzed, 1);
+Stats.nonlinear_effect_class_pf_vs_firstorder = NaN(n_analyzed, 1);
 end
 
 function [IRFEntry, sector_stats] = process_single_sector_irf( ...
-        idx_pos, sector_idx, client_idx, DynareResults, params, context, availability, opts)
+        idx_pos, sector_idx, client_idx, DynareResults, params, context, availability, ~)
 
 [irs_1st, sectoral_loglin] = maybe_process_irf( ...
     availability.has_1storder, DynareResults, 'IRSFirstOrder_raw', idx_pos, ...
@@ -154,21 +148,21 @@ function [IRFEntry, sector_stats] = process_single_sector_irf( ...
     availability.has_determ, DynareResults, 'IRSPerfectForesight_raw', idx_pos, ...
     sector_idx, client_idx, params, context);
 
-shock_sign = resolve_shock_sign(opts.shock_sign, irs_1st, irs_2nd, irs_pf, context.R);
-sector_stats = compute_sector_peak_stats(irs_1st, irs_2nd, irs_pf, shock_sign, context.R);
+sector_stats = compute_sector_cir_stats(irs_1st, irs_2nd, irs_pf, context.R);
 
 IRFEntry = struct();
 IRFEntry.sector_idx = sector_idx;
 IRFEntry.client_idx = client_idx;
-IRFEntry.IRSFirstOrder = irs_1st;
-IRFEntry.IRSSecondOrder = irs_2nd;
-IRFEntry.IRSPerfectForesight = irs_pf;
+IRFEntry.first_order = irs_1st;
+IRFEntry.second_order = irs_2nd;
+IRFEntry.perfect_foresight = irs_pf;
 IRFEntry.sectoral_loglin = sectoral_loglin;
 IRFEntry.sectoral_secondorder = sectoral_2nd;
 IRFEntry.sectoral_determ = sectoral_determ;
-IRFEntry.AggregateFirstOrder = build_aggregate_irf_block(irs_1st, sectoral_loglin, context);
-IRFEntry.AggregateSecondOrder = build_aggregate_irf_block(irs_2nd, sectoral_2nd, context);
-IRFEntry.AggregatePerfectForesight = build_aggregate_irf_block(irs_pf, sectoral_determ, context);
+IRFEntry.aggregate_first_order = build_aggregate_irf_block(irs_1st, context);
+IRFEntry.aggregate_second_order = build_aggregate_irf_block(irs_2nd, context);
+IRFEntry.aggregate_perfect_foresight = build_aggregate_irf_block(irs_pf, context);
+IRFEntry.cir = build_entry_cir_block(sector_stats);
 end
 
 function [IRS, sectoral_data] = maybe_process_irf( ...
@@ -182,11 +176,10 @@ end
 
 dynare_simul = DynareResults.(field_name){idx_pos};
 [IRS, sectoral_data] = process_ir_data(dynare_simul, sector_idx, client_idx, params, ...
-    context.steady_state, context.n_sectors, context.k_ss, context.utility_intratemp_ss, ...
-    context.policies_ss);
+    context.n_sectors, context.k_ss, context.policies_ss);
 end
 
-function AggregateIRF = build_aggregate_irf_block(IRS, sectoral_data, context)
+function AggregateIRF = build_aggregate_irf_block(IRS, context)
 if isempty(IRS)
     AggregateIRF = [];
     return;
@@ -205,103 +198,121 @@ AggregateIRF = struct( ...
     'K', IRS(R.K, :));
 end
 
-function shock_sign = resolve_shock_sign(explicit_sign, irs_1st, irs_2nd, irs_pf, R)
-if ~isempty(explicit_sign)
-    shock_sign = explicit_sign;
-    return;
-end
-
-if ~isempty(irs_1st)
-    reference_irf = irs_1st;
-elseif ~isempty(irs_2nd)
-    reference_irf = irs_2nd;
-else
-    reference_irf = irs_pf;
-end
-
-if reference_irf(R.A, 1) > 1
-    shock_sign = 1;
-else
-    shock_sign = -1;
-end
-end
-
-function sector_stats = compute_sector_peak_stats(irs_1st, irs_2nd, irs_pf, shock_sign, R)
+function sector_stats = compute_sector_cir_stats(irs_1st, irs_2nd, irs_pf, R)
 sector_stats = struct();
-sector_stats.firstorder = compute_peak_stats_for_irf(irs_1st, shock_sign, R);
-sector_stats.secondorder = compute_peak_stats_for_irf(irs_2nd, shock_sign, R);
-sector_stats.perfect_foresight = compute_peak_stats_for_irf(irs_pf, shock_sign, R);
-
-sector_stats.amplification_abs = sector_stats.perfect_foresight.peak_value - sector_stats.firstorder.peak_value;
-sector_stats.amplification_2nd = sector_stats.secondorder.peak_value - sector_stats.firstorder.peak_value;
-
-if sector_stats.firstorder.peak_value > 1e-10
-    sector_stats.amplification_rel = ...
-        (sector_stats.perfect_foresight.peak_value / sector_stats.firstorder.peak_value - 1) * 100;
-else
-    sector_stats.amplification_rel = 0;
+sector_stats.firstorder = compute_cir_stats_for_irf(irs_1st, R);
+sector_stats.secondorder = compute_cir_stats_for_irf(irs_2nd, R);
+sector_stats.perfect_foresight = compute_cir_stats_for_irf(irs_pf, R);
+sector_stats.nonlinear_amplification_pf_vs_firstorder = safe_divide_scalar( ...
+    sector_stats.perfect_foresight.cumulative_response, ...
+    sector_stats.firstorder.cumulative_response);
+sector_stats.nonlinear_effect_class_pf_vs_firstorder = classify_nonlinear_effect( ...
+    sector_stats.nonlinear_amplification_pf_vs_firstorder);
 end
 
-if shock_sign > 0
-    sector_stats.sign_str = ' (+)';
-else
-    sector_stats.sign_str = ' (-)';
-end
-end
-
-function peak_stats = compute_peak_stats_for_irf(IRS, shock_sign, R)
-peak_stats = struct('peak_value', 0, 'peak_period', 0, 'half_life', 0);
+function cir_stats = compute_cir_stats_for_irf(IRS, R)
+cir_stats = struct('cumulative_response', 0, 'total_effect_sign', 0);
 
 if isempty(IRS)
     return;
 end
 
-T_stats = min(100, size(IRS, 2));
-consumption_series = get_consumption_series(IRS, R, T_stats);
-[peak_value, peak_period, half_life] = calculatePeaksAndHalfLives(shock_sign * consumption_series);
-
-peak_stats.peak_value = abs(peak_value);
-peak_stats.peak_period = peak_period;
-peak_stats.half_life = half_life;
+consumption_series = get_consumption_series(IRS, R);
+cir_stats.cumulative_response = sum(consumption_series);
+cir_stats.total_effect_sign = classify_total_effect(cir_stats.cumulative_response);
 end
 
-function consumption_series = get_consumption_series(IRS, R, T_stats)
-if nargin < 3
-    T_stats = size(IRS, 2);
+function consumption_series = get_consumption_series(IRS, R)
+consumption_series = IRS(R.C_exp, :);
 end
 
-consumption_series = IRS(R.C_exp, 1:T_stats);
+function total_effect_sign = classify_total_effect(cumulative_response)
+if abs(cumulative_response) < 1e-12
+    total_effect_sign = 0;
+else
+    total_effect_sign = sign(cumulative_response);
+end
+end
+
+function ratio = safe_divide_scalar(numerator, denominator)
+if isfinite(numerator) && isfinite(denominator) && abs(denominator) > 1e-12
+    ratio = numerator / denominator;
+else
+    ratio = NaN;
+end
+end
+
+function effect_class = classify_nonlinear_effect(ratio)
+if ~isfinite(ratio)
+    effect_class = NaN;
+elseif abs(ratio - 1) < 1e-12
+    effect_class = 0;
+elseif ratio > 1
+    effect_class = 1;
+else
+    effect_class = -1;
+end
 end
 
 function Stats = assign_sector_stats(Stats, idx_pos, sector_stats)
-Stats.peak_values_firstorder(idx_pos) = sector_stats.firstorder.peak_value;
-Stats.peak_values_secondorder(idx_pos) = sector_stats.secondorder.peak_value;
-Stats.peak_values_pf(idx_pos) = sector_stats.perfect_foresight.peak_value;
+Stats.cir_values_firstorder(idx_pos) = sector_stats.firstorder.cumulative_response;
+Stats.cir_values_secondorder(idx_pos) = sector_stats.secondorder.cumulative_response;
+Stats.cir_values_pf(idx_pos) = sector_stats.perfect_foresight.cumulative_response;
 
-Stats.peak_periods_firstorder(idx_pos) = sector_stats.firstorder.peak_period;
-Stats.peak_periods_secondorder(idx_pos) = sector_stats.secondorder.peak_period;
-Stats.peak_periods_pf(idx_pos) = sector_stats.perfect_foresight.peak_period;
-
-Stats.half_lives_firstorder(idx_pos) = sector_stats.firstorder.half_life;
-Stats.half_lives_secondorder(idx_pos) = sector_stats.secondorder.half_life;
-Stats.half_lives_pf(idx_pos) = sector_stats.perfect_foresight.half_life;
-
-Stats.amplifications(idx_pos) = sector_stats.amplification_abs;
-Stats.amplifications_2nd(idx_pos) = sector_stats.amplification_2nd;
-Stats.amplifications_rel(idx_pos) = sector_stats.amplification_rel;
+Stats.total_effect_signs_firstorder(idx_pos) = sector_stats.firstorder.total_effect_sign;
+Stats.total_effect_signs_secondorder(idx_pos) = sector_stats.secondorder.total_effect_sign;
+Stats.total_effect_signs_pf(idx_pos) = sector_stats.perfect_foresight.total_effect_sign;
+Stats.nonlinear_amp_pf_vs_firstorder(idx_pos) = sector_stats.nonlinear_amplification_pf_vs_firstorder;
+Stats.nonlinear_effect_class_pf_vs_firstorder(idx_pos) = sector_stats.nonlinear_effect_class_pf_vs_firstorder;
 end
 
-function print_sector_peak_summary(sector_stats, availability)
+function cir = build_entry_cir_block(sector_stats)
+cir = struct();
+cir.response_variable = 'C_exp';
+cir.cumulative_responses = struct( ...
+    'first_order', sector_stats.firstorder.cumulative_response, ...
+    'second_order', sector_stats.secondorder.cumulative_response, ...
+    'perfect_foresight', sector_stats.perfect_foresight.cumulative_response);
+cir.total_effect_signs = struct( ...
+    'first_order', sector_stats.firstorder.total_effect_sign, ...
+    'second_order', sector_stats.secondorder.total_effect_sign, ...
+    'perfect_foresight', sector_stats.perfect_foresight.total_effect_sign);
+cir.nonlinear_amplification = struct( ...
+    'pf_vs_first_order', sector_stats.nonlinear_amplification_pf_vs_firstorder);
+cir.nonlinear_effect_class = struct( ...
+    'pf_vs_first_order', sector_stats.nonlinear_effect_class_pf_vs_firstorder);
+end
+
+function print_sector_cir_summary(sector_stats, availability)
 if availability.has_2ndorder
-    fprintf('  peak: 1st=%.4f, 2nd=%.4f, PF=%.4f%s | amplif: 2nd=%.4f, PF=%.2f%%\n', ...
-        sector_stats.firstorder.peak_value, sector_stats.secondorder.peak_value, ...
-        sector_stats.perfect_foresight.peak_value, sector_stats.sign_str, ...
-        sector_stats.amplification_2nd, sector_stats.amplification_rel);
+    fprintf('  CIR: 1st=%.4f (%s), 2nd=%.4f (%s), PF=%.4f (%s), amp(PF/1st)=%s\n', ...
+        sector_stats.firstorder.cumulative_response, format_effect_sign(sector_stats.firstorder.total_effect_sign), ...
+        sector_stats.secondorder.cumulative_response, format_effect_sign(sector_stats.secondorder.total_effect_sign), ...
+        sector_stats.perfect_foresight.cumulative_response, format_effect_sign(sector_stats.perfect_foresight.total_effect_sign), ...
+        format_ratio(sector_stats.nonlinear_amplification_pf_vs_firstorder));
 else
-    fprintf('  peak=%.4f (1st), %.4f (PF)%s, amplification=%.2f%%, half-life=%d/%d\n', ...
-        sector_stats.firstorder.peak_value, sector_stats.perfect_foresight.peak_value, ...
-        sector_stats.sign_str, sector_stats.amplification_rel, ...
-        sector_stats.firstorder.half_life, sector_stats.perfect_foresight.half_life);
+    fprintf('  CIR=%.4f (1st, %s), %.4f (PF, %s), amp(PF/1st)=%s\n', ...
+        sector_stats.firstorder.cumulative_response, format_effect_sign(sector_stats.firstorder.total_effect_sign), ...
+        sector_stats.perfect_foresight.cumulative_response, format_effect_sign(sector_stats.perfect_foresight.total_effect_sign), ...
+        format_ratio(sector_stats.nonlinear_amplification_pf_vs_firstorder));
+end
+end
+
+function label = format_effect_sign(total_effect_sign)
+if total_effect_sign > 0
+    label = 'positive';
+elseif total_effect_sign < 0
+    label = 'negative';
+else
+    label = 'zero';
+end
+end
+
+function text = format_ratio(value)
+if isfinite(value)
+    text = sprintf('%.3f', value);
+else
+    text = 'n/a';
 end
 end
 
@@ -361,45 +372,45 @@ end
 end
 
 function call_graphirs_for_sector(IRFEntry, labels_single, ax, opts, graph_opts, availability)
-irs_1st = {IRFEntry.IRSFirstOrder};
-irs_2nd = {IRFEntry.IRSSecondOrder};
-irs_pf = {IRFEntry.IRSPerfectForesight};
+irs_1st = {IRFEntry.first_order};
+irs_2nd = {IRFEntry.second_order};
+irs_pf = {IRFEntry.perfect_foresight};
 aggregate_irs = struct( ...
     'series_1', [], ...
     'series_2', [], ...
     'series_3', []);
 
 if availability.has_determ && availability.has_1storder && availability.has_2ndorder
-    aggregate_irs.series_1 = {IRFEntry.AggregatePerfectForesight};
-    aggregate_irs.series_2 = {IRFEntry.AggregateFirstOrder};
-    aggregate_irs.series_3 = {IRFEntry.AggregateSecondOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_perfect_foresight};
+    aggregate_irs.series_2 = {IRFEntry.aggregate_first_order};
+    aggregate_irs.series_3 = {IRFEntry.aggregate_second_order};
     GraphIRs(irs_pf, irs_1st, irs_2nd, ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {}, aggregate_irs);
 elseif availability.has_determ && availability.has_1storder
-    aggregate_irs.series_1 = {IRFEntry.AggregatePerfectForesight};
-    aggregate_irs.series_2 = {IRFEntry.AggregateFirstOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_perfect_foresight};
+    aggregate_irs.series_2 = {IRFEntry.aggregate_first_order};
     GraphIRs(irs_pf, irs_1st, [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {}, aggregate_irs);
 elseif availability.has_determ && availability.has_2ndorder
-    aggregate_irs.series_1 = {IRFEntry.AggregatePerfectForesight};
-    aggregate_irs.series_2 = {IRFEntry.AggregateSecondOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_perfect_foresight};
+    aggregate_irs.series_2 = {IRFEntry.aggregate_second_order};
     GraphIRs(irs_pf, irs_2nd, [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {'Perfect Foresight', 'Second-Order'}, aggregate_irs);
 elseif availability.has_1storder && availability.has_2ndorder
-    aggregate_irs.series_1 = {IRFEntry.AggregateFirstOrder};
-    aggregate_irs.series_2 = {IRFEntry.AggregateSecondOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_first_order};
+    aggregate_irs.series_2 = {IRFEntry.aggregate_second_order};
     GraphIRs(irs_1st, irs_2nd, [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {'First-Order', 'Second-Order'}, aggregate_irs);
 elseif availability.has_determ
-    aggregate_irs.series_1 = {IRFEntry.AggregatePerfectForesight};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_perfect_foresight};
     GraphIRs(irs_pf, [], [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {'Perfect Foresight'}, aggregate_irs);
 elseif availability.has_1storder
-    aggregate_irs.series_1 = {IRFEntry.AggregateFirstOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_first_order};
     GraphIRs(irs_1st, [], [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {'First-Order'}, aggregate_irs);
 elseif availability.has_2ndorder
-    aggregate_irs.series_1 = {IRFEntry.AggregateSecondOrder};
+    aggregate_irs.series_1 = {IRFEntry.aggregate_second_order};
     GraphIRs(irs_2nd, [], [], ax, opts.ir_plot_length, ...
         labels_single, opts.range_padding, graph_opts, {'Second-Order'}, aggregate_irs);
 end
@@ -414,23 +425,40 @@ end
 
 if availability.has_2ndorder
     fprintf('                    First-Order   Second-Order  Perfect Foresight\n');
-    fprintf('Avg peak value:     %.4f        %.4f        %.4f\n', ...
-        mean(Stats.peak_values_firstorder), mean(Stats.peak_values_secondorder), mean(Stats.peak_values_pf));
-    fprintf('Avg peak period:    %.1f           %.1f           %.1f\n', ...
-        mean(Stats.peak_periods_firstorder), mean(Stats.peak_periods_secondorder), mean(Stats.peak_periods_pf));
-    fprintf('Avg half-life:      %.1f           %.1f           %.1f\n', ...
-        mean(Stats.half_lives_firstorder), mean(Stats.half_lives_secondorder), mean(Stats.half_lives_pf));
-    fprintf('Amplification (2nd vs 1st): %.4f\n', mean(Stats.amplifications_2nd));
-    fprintf('Amplification (PF vs 1st):  %.4f (%.1f%%)\n', mean(Stats.amplifications), mean(Stats.amplifications_rel));
+    fprintf('Avg CIR:            %.4f        %.4f        %.4f\n', ...
+        mean(Stats.cir_values_firstorder), mean(Stats.cir_values_secondorder), mean(Stats.cir_values_pf));
+    fprintf('Positive sectors:   %d/%d          %d/%d          %d/%d\n', ...
+        sum(Stats.total_effect_signs_firstorder > 0), n_analyzed, ...
+        sum(Stats.total_effect_signs_secondorder > 0), n_analyzed, ...
+        sum(Stats.total_effect_signs_pf > 0), n_analyzed);
+    fprintf('Negative sectors:   %d/%d          %d/%d          %d/%d\n', ...
+        sum(Stats.total_effect_signs_firstorder < 0), n_analyzed, ...
+        sum(Stats.total_effect_signs_secondorder < 0), n_analyzed, ...
+        sum(Stats.total_effect_signs_pf < 0), n_analyzed);
 else
     fprintf('                    First-Order   Perfect Foresight\n');
-    fprintf('Avg peak value:     %.4f        %.4f\n', ...
-        mean(Stats.peak_values_firstorder), mean(Stats.peak_values_pf));
-    fprintf('Avg peak period:    %.1f           %.1f\n', ...
-        mean(Stats.peak_periods_firstorder), mean(Stats.peak_periods_pf));
-    fprintf('Avg half-life:      %.1f           %.1f\n', ...
-        mean(Stats.half_lives_firstorder), mean(Stats.half_lives_pf));
-    fprintf('Amplification (PF vs 1st): %.4f (%.1f%%)\n', mean(Stats.amplifications), mean(Stats.amplifications_rel));
+    fprintf('Avg CIR:            %.4f        %.4f\n', ...
+        mean(Stats.cir_values_firstorder), mean(Stats.cir_values_pf));
+    fprintf('Positive sectors:   %d/%d          %d/%d\n', ...
+        sum(Stats.total_effect_signs_firstorder > 0), n_analyzed, ...
+        sum(Stats.total_effect_signs_pf > 0), n_analyzed);
+    fprintf('Negative sectors:   %d/%d          %d/%d\n', ...
+        sum(Stats.total_effect_signs_firstorder < 0), n_analyzed, ...
+        sum(Stats.total_effect_signs_pf < 0), n_analyzed);
+end
+fprintf('Avg nonlinear amplification (PF/1st CIR): %s\n', ...
+    format_ratio(finite_mean(Stats.nonlinear_amp_pf_vs_firstorder)));
+fprintf('Amplified / attenuated sectors: %d / %d\n', ...
+    sum(Stats.nonlinear_effect_class_pf_vs_firstorder > 0), ...
+    sum(Stats.nonlinear_effect_class_pf_vs_firstorder < 0));
+end
+
+function value = finite_mean(values)
+finite_values = values(isfinite(values));
+if isempty(finite_values)
+    value = NaN;
+else
+    value = mean(finite_values);
 end
 end
 
@@ -456,7 +484,7 @@ end
 ir_horizon = 0;
 for i = 1:numel(IRFs)
     entry = IRFs{i};
-    candidate_fields = {'IRSFirstOrder', 'IRSSecondOrder', 'IRSPerfectForesight'};
+    candidate_fields = {'first_order', 'second_order', 'perfect_foresight'};
     for j = 1:numel(candidate_fields)
         field_name = candidate_fields{j};
         if isfield(entry, field_name) && ~isempty(entry.(field_name))
@@ -467,58 +495,32 @@ for i = 1:numel(IRFs)
 end
 end
 
-function entries = build_irf_entries(IRFs)
-entries = struct('sector_idx', {}, 'client_idx', {}, 'first_order', {}, ...
-    'second_order', {}, 'perfect_foresight', {}, 'sectoral_loglin', {}, ...
-    'sectoral_secondorder', {}, ...
-    'sectoral_determ', {}, 'aggregate_first_order', {}, ...
-    'aggregate_second_order', {}, 'aggregate_perfect_foresight', {});
-
-for i = 1:numel(IRFs)
-    legacy_entry = IRFs{i};
-    entries(i).sector_idx = legacy_entry.sector_idx;
-    entries(i).client_idx = legacy_entry.client_idx;
-    entries(i).first_order = legacy_entry.IRSFirstOrder;
-    entries(i).second_order = legacy_entry.IRSSecondOrder;
-    entries(i).perfect_foresight = legacy_entry.IRSPerfectForesight;
-
-    if isfield(legacy_entry, 'sectoral_loglin')
-        entries(i).sectoral_loglin = legacy_entry.sectoral_loglin;
-    end
-    if isfield(legacy_entry, 'sectoral_secondorder')
-        entries(i).sectoral_secondorder = legacy_entry.sectoral_secondorder;
-    end
-    if isfield(legacy_entry, 'sectoral_determ')
-        entries(i).sectoral_determ = legacy_entry.sectoral_determ;
-    end
-    if isfield(legacy_entry, 'AggregateFirstOrder')
-        entries(i).aggregate_first_order = legacy_entry.AggregateFirstOrder;
-    end
-    if isfield(legacy_entry, 'AggregateSecondOrder')
-        entries(i).aggregate_second_order = legacy_entry.AggregateSecondOrder;
-    end
-    if isfield(legacy_entry, 'AggregatePerfectForesight')
-        entries(i).aggregate_perfect_foresight = legacy_entry.AggregatePerfectForesight;
-    end
+function entries = finalize_irf_entries(IRFs)
+if isempty(IRFs)
+    entries = struct('sector_idx', {}, 'client_idx', {}, 'first_order', {}, ...
+        'second_order', {}, 'perfect_foresight', {}, 'sectoral_loglin', {}, ...
+        'sectoral_secondorder', {}, 'sectoral_determ', {}, ...
+        'aggregate_first_order', {}, 'aggregate_second_order', {}, ...
+        'aggregate_perfect_foresight', {}, 'cir', {});
+    return;
 end
+
+entries = vertcat(IRFs{:});
 end
 
 function summary_stats = build_irf_summary_stats(Stats)
 summary_stats = struct();
-summary_stats.peaks = struct( ...
-    'first_order', Stats.peak_values_firstorder(:).', ...
-    'second_order', Stats.peak_values_secondorder(:).', ...
-    'perfect_foresight', Stats.peak_values_pf(:).');
-summary_stats.peak_periods = struct( ...
-    'first_order', Stats.peak_periods_firstorder(:).', ...
-    'second_order', Stats.peak_periods_secondorder(:).', ...
-    'perfect_foresight', Stats.peak_periods_pf(:).');
-summary_stats.half_lives = struct( ...
-    'first_order', Stats.half_lives_firstorder(:).', ...
-    'second_order', Stats.half_lives_secondorder(:).', ...
-    'perfect_foresight', Stats.half_lives_pf(:).');
-summary_stats.amplifications = struct( ...
-    'abs', Stats.amplifications(:).', ...
-    'second_order', Stats.amplifications_2nd(:).', ...
-    'rel', Stats.amplifications_rel(:).');
+summary_stats.response_variable = 'C_exp';
+summary_stats.cumulative_responses = struct( ...
+    'first_order', Stats.cir_values_firstorder(:).', ...
+    'second_order', Stats.cir_values_secondorder(:).', ...
+    'perfect_foresight', Stats.cir_values_pf(:).');
+summary_stats.total_effect_signs = struct( ...
+    'first_order', Stats.total_effect_signs_firstorder(:).', ...
+    'second_order', Stats.total_effect_signs_secondorder(:).', ...
+    'perfect_foresight', Stats.total_effect_signs_pf(:).');
+summary_stats.nonlinear_amplification = struct( ...
+    'pf_vs_first_order', Stats.nonlinear_amp_pf_vs_firstorder(:).');
+summary_stats.nonlinear_effect_class = struct( ...
+    'pf_vs_first_order', Stats.nonlinear_effect_class_pf_vs_firstorder(:).');
 end

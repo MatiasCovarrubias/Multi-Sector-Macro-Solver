@@ -49,33 +49,20 @@ print_empirical_targets(calib_data.empirical_targets);
 
 %% Steady state
 fprintf('\n--- Steady State ---\n');
-ss_file = fullfile(exp_paths.experiment, 'steady_state.mat');
-ss_cached = exist(ss_file, 'file') && ~config.force_recalibrate;
+fprintf('Targets: sig_c=%.2f sig_m=%.2f sig_q=%.2f sig_y=%.2f sig_I=%.2f sig_l=%.2f\n', ...
+    params.sigma_c, params.sigma_m, params.sigma_q, params.sigma_y, params.sigma_I, params.sigma_l);
 
-if ss_cached
-    [ModData, params, cache_info] = load_or_build_cached_steady_state( ...
-        params, config, exp_paths, struct('verbose', false));
+[ModData, params, cache_info] = load_or_build_cached_steady_state( ...
+    params, config, exp_paths, struct( ...
+    'verbose', true, ...
+    'save_local_cache', config.save_results));
+
+if strcmp(cache_info.source, 'experiment_cache') || strcmp(cache_info.source, 'project_cache')
     fprintf('Loaded cached SS (%s): %s\n', cache_info.source, cache_info.path);
+elseif cache_info.saved
+    fprintf('SS cached: %s (%.1fs)\n', cache_info.path, cache_info.elapsed_seconds);
 else
-    fprintf('Targets: sig_c=%.2f sig_m=%.2f sig_q=%.2f sig_y=%.2f sig_I=%.2f sig_l=%.2f\n', ...
-        params.sigma_c, params.sigma_m, params.sigma_q, params.sigma_y, params.sigma_I, params.sigma_l);
-
-    calib_opts = struct();
-    calib_opts.gridpoints = config.gridpoints;
-    calib_opts.verbose = true;
-    calib_opts.sol_guess_file = config.sol_guess_file;
-    calib_opts.fsolve_options = config.fsolve_options;
-
-    tic;
-    [ModData, params] = calibrate_steady_state(params, calib_opts);
-    elapsed_calib = toc;
-
-    if config.save_results
-        save(ss_file, 'ModData', 'params');
-        fprintf('SS cached: %s (%.1fs)\n', ss_file, elapsed_calib);
-    else
-        fprintf('SS not cached because save_results=false (%.1fs)\n', elapsed_calib);
-    end
+    fprintf('SS not cached because save_results=false (%.1fs)\n', cache_info.elapsed_seconds);
 end
 
 %% Base simulation
@@ -143,8 +130,8 @@ has_irfs = run_any_irs && isfield(AllShockResults, 'ShockArtifacts') && ...
     ~isempty(AllShockResults.ShockArtifacts) && ~isempty(AllShockResults.ShockArtifacts{1});
 ModelData_IRs = build_ModelData_IRs(AllShockResults, config, save_label, sector_indices, n_shocks);
 
-%% Diagnostics
-if flags.has_1storder || flags.has_2ndorder || flags.has_pf || flags.has_mit || has_irfs
+%% IRF summary diagnostics
+if has_irfs
     Diagnostics = build_nonlinearity_diagnostics(ModelData_simulation, AllShockResults, params, config, ModData);
 else
     Diagnostics = [];

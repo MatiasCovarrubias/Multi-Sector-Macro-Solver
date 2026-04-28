@@ -27,7 +27,7 @@ Core model object: metadata, calibration, steady state, solution views, summary 
 | `metadata.n_shocks` | int | Number of shock configurations |
 | `metadata.run_flags` | struct | Final run-status flags: `{has_1storder, has_2ndorder, has_pf, has_mit}` |
 | `metadata.has_irfs` | logical | Whether IRFs were packaged for this run |
-| `metadata.has_diagnostics` | logical | Whether `ModelData.Diagnostics` is attached |
+| `metadata.has_diagnostics` | logical | Whether the compact IRF summary diagnostics are attached in `ModelData.Diagnostics` |
 | `calibration` | struct | Full calibration data |
 | `params` | struct | Model parameters |
 | `EmpiricalTargets` | struct | Empirical target moments |
@@ -51,7 +51,7 @@ Core model object: metadata, calibration, steady state, solution views, summary 
 | `Statistics.SecondOrder` | struct | Second-order simulation summary stats |
 | `Statistics.PerfectForesight` | struct | Perfect-foresight simulation summary stats |
 | `Statistics.MITShocks` | struct | MIT-shocks simulation summary stats |
-| `Diagnostics` | struct | Diagnostics |
+| `Diagnostics` | struct | Compact CIR-based IRF diagnostics used by the end-of-run summary table |
 
 ## `ModelData_simulation`
 
@@ -92,6 +92,7 @@ Each of `FirstOrder`, `SecondOrder`, `PerfectForesight`, and `MITShocks` uses th
 | `<Method>.T_active` | int | Active-shock periods |
 | `<Method>.T_total` | int | `burn_in + T_active + burn_out` |
 | `<Method>.summary_stats` | struct | Simulation summary stats |
+| `<Method>.aggregate_series` | struct | Canonical aggregate simulation series stored as deviations from deterministic steady state |
 
 ### Window conventions
 
@@ -115,9 +116,17 @@ The common timing fields are:
 
 Simulation-side aggregate moments are computed from:
 
-1. Reconstruct aggregate `C`, `I`, `GDP`, `L`, and `K` in levels period by period.
-2. Convert them to `log(X_t) - log(X_ss_det)`.
-3. Compute moments on `shocks_simul` only.
+1. Read aggregate `C`, `I`, `GDP`, `L`, `K`, and `utility_intratemp` directly from the Dynare aggregate endogenous-variable rows.
+2. Convert `C`, `I`, `GDP`, `L`, and `K` to `log(X_t) - log(X_ss_det)`.
+3. Convert `utility_intratemp` to deviation from its deterministic steady-state policy value.
+4. Reconstruct aggregate `M` separately, because it is not stored as its own aggregate endogenous variable.
+5. Compute moments on `shocks_simul` only.
+
+The stored `aggregate_series` blocks follow the same canonical convention used by the aggregate moment code:
+
+- `C`, `I`, `GDP`, `L`, and `K` are stored as `log(X_t) - log(X_ss_det)`
+- `utility_intratemp` is stored as deviation from its deterministic steady-state policy value
+- each series is stored by window (`burnin`, `active`, `burnout`) and as a concatenated `full` path
 
 Sectoral value added in the moment code is also intended to use fixed steady-state prices:
 
@@ -204,12 +213,29 @@ Each entry is a struct with:
 | `first_order` | matrix `[29 × T]` | First-order IRF |
 | `second_order` | matrix `[29 × T]` | Second-order IRF |
 | `perfect_foresight` | matrix `[29 × T]` | Perfect-foresight IRF |
-| `sectoral_loglin` | struct | Full-sector first-order log-deviation blocks used for re-aggregation |
-| `sectoral_secondorder` | struct | Full-sector second-order log-deviation blocks used for re-aggregation |
-| `sectoral_determ` | struct | Full-sector perfect-foresight log-deviation blocks used for re-aggregation |
+| `sectoral_loglin` | struct | Full-sector first-order log-deviation blocks retained for compatibility/debugging |
+| `sectoral_secondorder` | struct | Full-sector second-order log-deviation blocks retained for compatibility/debugging |
+| `sectoral_determ` | struct | Full-sector perfect-foresight log-deviation blocks retained for compatibility/debugging |
 | `aggregate_first_order` | struct | Stored aggregate first-order IR series |
 | `aggregate_second_order` | struct | Stored aggregate second-order IR series |
 | `aggregate_perfect_foresight` | struct | Stored aggregate perfect-foresight IR series |
+| `cir` | struct | Per-sector CIR statistics for this shock |
+
+### Per-sector CIR block: `shocks(i).entries(j).cir`
+
+Each sector entry stores the CIR values directly, so callers do not need to recompute them from the full IR matrices.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `response_variable` | string | Currently `'C_exp'`, row 2 of the IR matrix |
+| `cumulative_responses.first_order` | scalar | Sum over all periods of the first-order `C_exp` IR |
+| `cumulative_responses.second_order` | scalar | Sum over all periods of the second-order `C_exp` IR, or zero when unavailable |
+| `cumulative_responses.perfect_foresight` | scalar | Sum over all periods of the perfect-foresight `C_exp` IR |
+| `total_effect_signs.first_order` | scalar | Sign of the first-order CIR: `-1`, `0`, or `+1` |
+| `total_effect_signs.second_order` | scalar | Sign of the second-order CIR: `-1`, `0`, or `+1` |
+| `total_effect_signs.perfect_foresight` | scalar | Sign of the perfect-foresight CIR: `-1`, `0`, or `+1` |
+| `nonlinear_amplification.pf_vs_first_order` | scalar | `CIR(PF) / CIR(first order)` for this sector and shock |
+| `nonlinear_effect_class.pf_vs_first_order` | scalar | `+1` amplification, `-1` attenuation, `0` neutral, `NaN` unavailable |
 
 `sectoral_*` blocks can contain:
 
@@ -232,7 +258,47 @@ Each `aggregate_*` block stores:
 - `L`
 - `K`
 
-Here `C`, `I`, `GDP`, `L`, and `K` are read directly from the Dynare aggregate endogenous variables, stored as log deviations from deterministic steady state. The `*_exp` fields are compatibility aliases for the same direct aggregate IR rows.
+Here `C`, `I`, `GDP`, `L`, and `K` are read directly from the Dynare aggregate endogenous variables, stored as log deviations from deterministic steady state. The `*_exp` fields are compatibility aliases for the same direct aggregate IR rows. The `sectoral_*` payloads are not used to rebuild these aggregate IRs in the current packaging path.
+
+### Per-shock summary stats: `shocks(i).summary_stats`
+
+`summary_stats` collects the same per-sector CIR quantities into vectors ordered like `shocks(i).sector_indices`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `response_variable` | string | Currently `'C_exp'` |
+| `cumulative_responses.first_order` | row vector `[1 × n_analyzed]` | First-order CIR by analyzed sector |
+| `cumulative_responses.second_order` | row vector `[1 × n_analyzed]` | Second-order CIR by analyzed sector |
+| `cumulative_responses.perfect_foresight` | row vector `[1 × n_analyzed]` | Perfect-foresight CIR by analyzed sector |
+| `total_effect_signs.first_order` | row vector `[1 × n_analyzed]` | Sign of first-order CIR by analyzed sector |
+| `total_effect_signs.second_order` | row vector `[1 × n_analyzed]` | Sign of second-order CIR by analyzed sector |
+| `total_effect_signs.perfect_foresight` | row vector `[1 × n_analyzed]` | Sign of perfect-foresight CIR by analyzed sector |
+| `nonlinear_amplification.pf_vs_first_order` | row vector `[1 × n_analyzed]` | PF-vs-first-order nonlinear amplification by analyzed sector |
+| `nonlinear_effect_class.pf_vs_first_order` | row vector `[1 × n_analyzed]` | Amplification/attenuation class by analyzed sector |
+
+### Cross-shock CIR asymmetry: `ModelData_IRs.cir_asymmetry`
+
+Positive and negative shocks are paired by `size_pct`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `description` | string | Definition of the ratio |
+| `interpretation` | string | Rule of thumb for negative asymmetry |
+| `n_pairs` | int | Number of matched positive/negative shock-size pairs |
+| `rows(k).size_pct` | scalar | Matched shock size |
+| `rows(k).negative_label` | string | Negative-shock label |
+| `rows(k).positive_label` | string | Positive-shock label |
+| `rows(k).ratio.first_order` | row vector `[1 × n_analyzed]` | Negative first-order CIR divided by positive first-order CIR |
+| `rows(k).ratio.second_order` | row vector `[1 × n_analyzed]` | Negative second-order CIR divided by positive second-order CIR |
+| `rows(k).ratio.perfect_foresight` | row vector `[1 × n_analyzed]` | Negative PF CIR divided by positive PF CIR |
+| `rows(k).negative_asymmetry.<method>` | logical row vector | `true` when the corresponding ratio is below `-1` |
+
+### Diagnostics used by the printed summary
+
+`ModelData.Diagnostics` stores a compact view of the IR analysis:
+
+- `upstreamness`: steady-state upstreamness computed in MATLAB from log steady-state policies converted to levels. It stores `U_M`, `U_I`, `U_simple`, `Delta_M`, and `Delta_I`; `U_M` is the primary measure used for correlations.
+- `irf_sector_breakdown.rows(k)`: one row per matched shock size, with sector vectors for negative-shock amplification, positive-shock amplification, PF asymmetry, upstreamness, and the three upstreamness correlations printed in the final summary.
 
 ### IRF row map
 

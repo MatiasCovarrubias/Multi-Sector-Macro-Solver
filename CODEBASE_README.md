@@ -142,6 +142,7 @@ Dynare should resolve to:
 - `utils/run_irf_loop.m`
 - `dynare/process_sector_irs.m`
 - `utils/process_ir_data.m`
+- `utils/compute_upstreamness.m`
 
 ### Packaging and validation
 
@@ -174,3 +175,6 @@ run_local_smoke_tests(cfg)
 - Simulation artifacts live in `ModelData_simulation`.
 - IRF artifacts live in `ModelData_IRs.shocks`.
 - IRFs use the shared 29-row layout defined by `utils/process_ir_data.m`.
+- IR summary statistics are CIR-based. For each shock and analyzed sector, `ModelData_IRs.shocks(i).entries(j).cir` stores the sector's cumulative response of `C_exp`, total-effect signs, and PF-vs-first-order nonlinear amplification. The same values are also collected as per-shock vectors in `ModelData_IRs.shocks(i).summary_stats`.
+- Paired positive/negative shock diagnostics live in `ModelData_IRs.cir_asymmetry` and `ModelData.Diagnostics.irf_sector_breakdown`.
+- `utils/compute_upstreamness.m` computes steady-state upstreamness directly in MATLAB from log steady-state policies converted to levels. `U_M` is the primary measure used by the end-of-run IR correlation summary.

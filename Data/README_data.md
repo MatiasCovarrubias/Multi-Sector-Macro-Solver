@@ -271,7 +271,7 @@ Saved fields under `EmpiricalTargets.correlations` include:
 
 On the model side, the same expenditure concepts are used:
 
-- Simulation moments come from reconstructed aggregate log deviations:
+- Simulation moments read direct aggregate Dynare rows for `C`, `I`, `GDP`, `L`, and `K`, subtract deterministic steady state, and compute moments on those log deviations. Aggregate `M` is still reconstructed separately because it is not a dedicated model aggregate variable:
   - `L_hc_logdev`
   - `C_logdev`
   - `I_logdev`

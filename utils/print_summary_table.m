@@ -14,7 +14,7 @@ fprintf('Experiment: %s\n', Summary.save_label);
 print_model_vs_data_table(ms, Summary.empirical_targets, Summary.config);
 print_aggregate_moment_tables(ms, Summary.theoretical_stats);
 print_scaled_sector_volatility_table(ms, Summary.sector_labels, Summary.config);
-print_irf_amplification_table(diag);
+print_irf_cir_table(diag);
 
 fprintf('================================================================================\n\n');
 end
@@ -135,37 +135,36 @@ if printed_rows == 0
 end
 end
 
-function print_irf_amplification_table(diag)
-fprintf('\n[4] IRF AMPLIFICATION\n');
+function print_irf_cir_table(diag)
+fprintf('\n[4] IRF NONLINEARITY SUMMARY\n');
 
 if isempty(fieldnames(diag)) || ~isfield(diag, 'has_irfs') || ~diag.has_irfs
     fprintf('    (No IRF results available)\n');
     return;
 end
 
-has_2nd = isfield(diag, 'irf_peak_secondorder');
+if ~isfield(diag, 'irf_sector_breakdown') || diag.irf_sector_breakdown.n_pairs == 0
+    fprintf('    (No paired positive/negative IRF results available)\n');
+    return;
+end
 
-if has_2nd
-    fprintf('    %-16s%12s%12s%12s%14s\n', 'Shock', 'Peak(1st)', 'Peak(2nd)', 'Peak(PF)', 'Amplif(PF)');
-    fprintf('    %s\n', repmat('-', 1, 66));
-    for i = 1:diag.irf_n_shocks
-        fprintf('    %-16s%12s%12s%12s%14s\n', ...
-            diag.irf_shock_labels{i}, ...
-            format_percent(diag.irf_peak_firstorder(i), 3), ...
-            format_percent(diag.irf_peak_secondorder(i), 3), ...
-            format_percent(diag.irf_peak_pf(i), 3), ...
-            format_percent(diag.irf_amplification_rel(i), 1));
-    end
-else
-    fprintf('    %-16s%12s%12s%14s\n', 'Shock', 'Peak(1st)', 'Peak(PF)', 'Amplif(PF)');
-    fprintf('    %s\n', repmat('-', 1, 54));
-    for i = 1:diag.irf_n_shocks
-        fprintf('    %-16s%12s%12s%14s\n', ...
-            diag.irf_shock_labels{i}, ...
-            format_percent(diag.irf_peak_firstorder(i), 3), ...
-            format_percent(diag.irf_peak_pf(i), 3), ...
-            format_percent(diag.irf_amplification_rel(i), 1));
-    end
+breakdown = diag.irf_sector_breakdown;
+fprintf('    Amplification = mean sector PF CIR / 1st-order CIR. Asymmetry = mean sector PF negative / PF positive.\n');
+fprintf('    Correlations use upstreamness measure: %s\n', breakdown.primary_upstreamness_measure);
+fprintf('    %-8s%12s%12s%12s%13s%13s%13s\n', ...
+    'Shock %', 'Amp(-)', 'Amp(+)', 'Asym(PF)', 'Corr -', 'Corr +', 'Corr Asym');
+fprintf('    %s\n', repmat('-', 1, 83));
+
+for i = 1:breakdown.n_pairs
+    row = breakdown.rows(i);
+    fprintf('    %-8s%12s%12s%12s%13s%13s%13s\n', ...
+        format_stat(row.size_pct, 0), ...
+        format_stat(finite_mean(row.negative_amplification_pf_vs_firstorder), 3), ...
+        format_stat(finite_mean(row.positive_amplification_pf_vs_firstorder), 3), ...
+        format_stat(finite_mean(row.pf_asymmetry), 3), ...
+        format_stat(row.corr_negative_amplification_upstreamness, 3), ...
+        format_stat(row.corr_positive_amplification_upstreamness, 3), ...
+        format_stat(row.corr_pf_asymmetry_upstreamness, 3));
 end
 end
 
@@ -238,6 +237,15 @@ if ~isfinite(value)
 end
 
 out = sprintf(['%+0.', num2str(decimals), 'f%%'], value);
+end
+
+function value = finite_mean(values)
+finite_values = values(isfinite(values));
+if isempty(finite_values)
+    value = NaN;
+else
+    value = mean(finite_values);
+end
 end
 
 function printed_rows = print_scaled_sector_rows(is_available, method_label, method_stats, sector_labels)

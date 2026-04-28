@@ -1,6 +1,6 @@
 function [ModelData, ModelData_simulation, ModelData_IRs] = finalize_model_outputs( ...
         ModelData, ModelData_simulation, ModelData_IRs, flags, has_irfs, Diagnostics)
-% FINALIZE_MODEL_OUTPUTS Attach run metadata and diagnostics before saving
+% FINALIZE_MODEL_OUTPUTS Attach run metadata and IRF summary diagnostics before saving
 
 if nargin < 6
     Diagnostics = [];

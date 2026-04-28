@@ -20,6 +20,10 @@ n_analyzed = numel(ModelData_IRs.sector_indices);
 R = get_ir_row_map();
 run_flags = ModelData_IRs.metadata.run_flags;
 
+if isfield(ModelData_IRs, 'cir_asymmetry')
+    validate_cir_asymmetry(ModelData_IRs.cir_asymmetry, n_analyzed, context);
+end
+
 assert(ModelData_IRs.metadata.has_irfs == true, ...
     'validate_ModelData_IRs:InvalidMetadataFlag', ...
     '[%s] ModelData_IRs.metadata.has_irfs must be true.', context);
@@ -44,10 +48,11 @@ for i = 1:n_shocks
     for j = 1:n_analyzed
         shock_entry = shock_artifact.entries(j);
         assert_required_fields(shock_entry, {'sector_idx', 'client_idx', 'first_order', 'second_order', ...
-            'perfect_foresight'}, context, sprintf('ModelData_IRs.shocks(%d).entries(%d)', i, j));
+            'perfect_foresight', 'cir'}, context, sprintf('ModelData_IRs.shocks(%d).entries(%d)', i, j));
         assert(shock_entry.sector_idx == ModelData_IRs.sector_indices(j), ...
             'validate_ModelData_IRs:ShockEntrySectorMismatch', ...
             '[%s] Shock artifact entry sector_idx does not match ModelData_IRs.sector_indices.', context);
+        validate_entry_cir(shock_entry.cir, context, sprintf('ModelData_IRs.shocks(%d).entries(%d).cir', i, j));
 
         validate_irf_matrix(shock_entry.first_order, R.N_ROWS, logical(run_flags.has_1storder), ...
             context, sprintf('ModelData_IRs.shocks(%d).entries(%d).first_order', i, j));
@@ -57,6 +62,37 @@ for i = 1:n_shocks
             context, sprintf('ModelData_IRs.shocks(%d).entries(%d).perfect_foresight', i, j));
     end
 end
+end
+
+function validate_entry_cir(cir, context, cir_name)
+assert(isstruct(cir) && ~isempty(fieldnames(cir)), ...
+    'validate_ModelData_IRs:InvalidEntryCIR', ...
+    '[%s] %s must be a non-empty struct.', context, cir_name);
+assert_required_fields(cir, {'cumulative_responses', 'total_effect_signs', ...
+    'nonlinear_amplification', 'nonlinear_effect_class'}, context, cir_name);
+assert_required_fields(cir.cumulative_responses, {'first_order', 'second_order', 'perfect_foresight'}, ...
+    context, [cir_name '.cumulative_responses']);
+assert_required_fields(cir.total_effect_signs, {'first_order', 'second_order', 'perfect_foresight'}, ...
+    context, [cir_name '.total_effect_signs']);
+assert_required_fields(cir.nonlinear_amplification, {'pf_vs_first_order'}, ...
+    context, [cir_name '.nonlinear_amplification']);
+assert_required_fields(cir.nonlinear_effect_class, {'pf_vs_first_order'}, ...
+    context, [cir_name '.nonlinear_effect_class']);
+
+validate_scalar(cir.cumulative_responses.first_order, context, [cir_name '.cumulative_responses.first_order']);
+validate_scalar(cir.cumulative_responses.second_order, context, [cir_name '.cumulative_responses.second_order']);
+validate_scalar(cir.cumulative_responses.perfect_foresight, context, [cir_name '.cumulative_responses.perfect_foresight']);
+validate_scalar(cir.total_effect_signs.first_order, context, [cir_name '.total_effect_signs.first_order']);
+validate_scalar(cir.total_effect_signs.second_order, context, [cir_name '.total_effect_signs.second_order']);
+validate_scalar(cir.total_effect_signs.perfect_foresight, context, [cir_name '.total_effect_signs.perfect_foresight']);
+validate_scalar(cir.nonlinear_amplification.pf_vs_first_order, context, [cir_name '.nonlinear_amplification.pf_vs_first_order']);
+validate_scalar(cir.nonlinear_effect_class.pf_vs_first_order, context, [cir_name '.nonlinear_effect_class.pf_vs_first_order']);
+end
+
+function validate_scalar(value, context, value_name)
+assert(isnumeric(value) && isscalar(value), ...
+    'validate_ModelData_IRs:InvalidScalar', ...
+    '[%s] %s must be a numeric scalar.', context, value_name);
 end
 
 function assert_required_fields(s, required_fields, context, struct_name)
@@ -98,33 +134,69 @@ function validate_summary_stats(summary_stats, n_analyzed, context, stats_name)
 assert(isstruct(summary_stats) && ~isempty(fieldnames(summary_stats)), ...
     'validate_ModelData_IRs:InvalidSummaryStats', ...
     '[%s] %s must be a non-empty struct.', context, stats_name);
-assert_required_fields(summary_stats, {'peaks', 'peak_periods', 'half_lives', 'amplifications'}, ...
+assert_required_fields(summary_stats, {'cumulative_responses', 'total_effect_signs', ...
+    'nonlinear_amplification', 'nonlinear_effect_class'}, ...
     context, stats_name);
-assert_required_fields(summary_stats.peaks, {'first_order', 'second_order', 'perfect_foresight'}, ...
-    context, [stats_name '.peaks']);
-assert_required_fields(summary_stats.peak_periods, {'first_order', 'second_order', 'perfect_foresight'}, ...
-    context, [stats_name '.peak_periods']);
-assert_required_fields(summary_stats.half_lives, {'first_order', 'second_order', 'perfect_foresight'}, ...
-    context, [stats_name '.half_lives']);
-assert_required_fields(summary_stats.amplifications, {'abs', 'second_order', 'rel'}, ...
-    context, [stats_name '.amplifications']);
+assert_required_fields(summary_stats.cumulative_responses, {'first_order', 'second_order', 'perfect_foresight'}, ...
+    context, [stats_name '.cumulative_responses']);
+assert_required_fields(summary_stats.total_effect_signs, {'first_order', 'second_order', 'perfect_foresight'}, ...
+    context, [stats_name '.total_effect_signs']);
+assert_required_fields(summary_stats.nonlinear_amplification, {'pf_vs_first_order'}, ...
+    context, [stats_name '.nonlinear_amplification']);
+assert_required_fields(summary_stats.nonlinear_effect_class, {'pf_vs_first_order'}, ...
+    context, [stats_name '.nonlinear_effect_class']);
 
-validate_summary_row(summary_stats.peaks.first_order, n_analyzed, context, [stats_name '.peaks.first_order']);
-validate_summary_row(summary_stats.peaks.second_order, n_analyzed, context, [stats_name '.peaks.second_order']);
-validate_summary_row(summary_stats.peaks.perfect_foresight, n_analyzed, context, [stats_name '.peaks.perfect_foresight']);
-validate_summary_row(summary_stats.peak_periods.first_order, n_analyzed, context, [stats_name '.peak_periods.first_order']);
-validate_summary_row(summary_stats.peak_periods.second_order, n_analyzed, context, [stats_name '.peak_periods.second_order']);
-validate_summary_row(summary_stats.peak_periods.perfect_foresight, n_analyzed, context, [stats_name '.peak_periods.perfect_foresight']);
-validate_summary_row(summary_stats.half_lives.first_order, n_analyzed, context, [stats_name '.half_lives.first_order']);
-validate_summary_row(summary_stats.half_lives.second_order, n_analyzed, context, [stats_name '.half_lives.second_order']);
-validate_summary_row(summary_stats.half_lives.perfect_foresight, n_analyzed, context, [stats_name '.half_lives.perfect_foresight']);
-validate_summary_row(summary_stats.amplifications.abs, n_analyzed, context, [stats_name '.amplifications.abs']);
-validate_summary_row(summary_stats.amplifications.second_order, n_analyzed, context, [stats_name '.amplifications.second_order']);
-validate_summary_row(summary_stats.amplifications.rel, n_analyzed, context, [stats_name '.amplifications.rel']);
+validate_summary_row(summary_stats.cumulative_responses.first_order, n_analyzed, context, [stats_name '.cumulative_responses.first_order']);
+validate_summary_row(summary_stats.cumulative_responses.second_order, n_analyzed, context, [stats_name '.cumulative_responses.second_order']);
+validate_summary_row(summary_stats.cumulative_responses.perfect_foresight, n_analyzed, context, [stats_name '.cumulative_responses.perfect_foresight']);
+validate_summary_row(summary_stats.total_effect_signs.first_order, n_analyzed, context, [stats_name '.total_effect_signs.first_order']);
+validate_summary_row(summary_stats.total_effect_signs.second_order, n_analyzed, context, [stats_name '.total_effect_signs.second_order']);
+validate_summary_row(summary_stats.total_effect_signs.perfect_foresight, n_analyzed, context, [stats_name '.total_effect_signs.perfect_foresight']);
+validate_summary_row(summary_stats.nonlinear_amplification.pf_vs_first_order, n_analyzed, context, [stats_name '.nonlinear_amplification.pf_vs_first_order']);
+validate_summary_row(summary_stats.nonlinear_effect_class.pf_vs_first_order, n_analyzed, context, [stats_name '.nonlinear_effect_class.pf_vs_first_order']);
 end
 
 function validate_summary_row(value, n_analyzed, context, value_name)
 assert(isnumeric(value) && isvector(value) && numel(value) == n_analyzed, ...
     'validate_ModelData_IRs:InvalidSummaryRow', ...
     '[%s] %s must be a numeric vector of length %d.', context, value_name, n_analyzed);
+end
+
+function validate_cir_asymmetry(cir_asymmetry, n_analyzed, context)
+assert(isstruct(cir_asymmetry), ...
+    'validate_ModelData_IRs:InvalidCIRAsymmetry', ...
+    '[%s] ModelData_IRs.cir_asymmetry must be a struct.', context);
+assert_required_fields(cir_asymmetry, {'n_pairs', 'rows'}, context, 'ModelData_IRs.cir_asymmetry');
+assert(numel(cir_asymmetry.rows) == cir_asymmetry.n_pairs, ...
+    'validate_ModelData_IRs:InvalidCIRAsymmetryRows', ...
+    '[%s] ModelData_IRs.cir_asymmetry.rows must match n_pairs.', context);
+
+for i = 1:numel(cir_asymmetry.rows)
+    row = cir_asymmetry.rows(i);
+    assert_required_fields(row, {'size_pct', 'negative_shock_idx', 'positive_shock_idx', ...
+        'ratio', 'negative_asymmetry'}, context, sprintf('ModelData_IRs.cir_asymmetry.rows(%d)', i));
+    validate_asymmetry_method_vectors(row.ratio, n_analyzed, context, ...
+        sprintf('ModelData_IRs.cir_asymmetry.rows(%d).ratio', i), true);
+    validate_asymmetry_method_vectors(row.negative_asymmetry, n_analyzed, context, ...
+        sprintf('ModelData_IRs.cir_asymmetry.rows(%d).negative_asymmetry', i), false);
+end
+end
+
+function validate_asymmetry_method_vectors(values, n_analyzed, context, value_name, must_be_numeric)
+assert_required_fields(values, {'first_order', 'second_order', 'perfect_foresight'}, context, value_name);
+method_fields = {'first_order', 'second_order', 'perfect_foresight'};
+
+for i = 1:numel(method_fields)
+    field_name = method_fields{i};
+    field_value = values.(field_name);
+    if must_be_numeric
+        assert(isnumeric(field_value) && isvector(field_value) && numel(field_value) == n_analyzed, ...
+            'validate_ModelData_IRs:InvalidCIRAsymmetryVector', ...
+            '[%s] %s.%s must be a numeric vector of length %d.', context, value_name, field_name, n_analyzed);
+    else
+        assert(islogical(field_value) && isvector(field_value) && numel(field_value) == n_analyzed, ...
+            'validate_ModelData_IRs:InvalidCIRAsymmetryVector', ...
+            '[%s] %s.%s must be a logical vector of length %d.', context, value_name, field_name, n_analyzed);
+    end
+end
 end

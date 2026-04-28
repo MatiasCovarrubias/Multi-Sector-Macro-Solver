@@ -5,6 +5,7 @@ function [AllShockResults, BaseResults] = run_irf_loop(config, sector_indices, .
     fprintf('\nIRF Analysis: %d shocks, sectors [%s]\n', n_shocks, num2str(sector_indices));
     shared_solution_cache = extract_solution_cache(BaseResults);
     announce_cache_status(shared_solution_cache);
+    AllShockResults.ShockArtifacts = cell(n_shocks, 1);
 
     for shock_idx = 1:n_shocks
         shock_config = config.shock_values(shock_idx);
@@ -35,10 +36,6 @@ function [AllShockResults, BaseResults] = run_irf_loop(config, sector_indices, .
 
         IRShockArtifact = process_sector_irs(DynareResults, params, ModData, labels, ir_opts);
         IRShockArtifact.shock_config = shock_config;
-        if ~isfield(AllShockResults, 'ShockArtifacts') || isempty(AllShockResults.ShockArtifacts)
-            AllShockResults.ShockArtifacts = cell(n_shocks, 1);
-        end
-        print_ir_artifact_debug(shock_idx, n_shocks, IRShockArtifact, AllShockResults);
         AllShockResults.ShockArtifacts{shock_idx} = IRShockArtifact;
 
         fprintf('  Done (%.1fs)\n', elapsed_irf);
@@ -161,39 +158,4 @@ if flag
 else
     s = 'no';
 end
-end
-
-function print_ir_artifact_debug(shock_idx, n_shocks, artifact, AllShockResults)
-fprintf('[run_irf_loop] shock %d/%d | artifact_fields=%s\n', ...
-    shock_idx, n_shocks, join_fieldnames(fieldnames(artifact)));
-if isfield(artifact, 'metadata')
-    fprintf('[run_irf_loop] shock %d/%d | metadata_fields=%s\n', ...
-        shock_idx, n_shocks, join_fieldnames(fieldnames(artifact.metadata)));
-end
-if isfield(artifact, 'entries') && ~isempty(artifact.entries)
-    fprintf('[run_irf_loop] shock %d/%d | first_entry_fields=%s\n', ...
-        shock_idx, n_shocks, join_fieldnames(fieldnames(artifact.entries(1))));
-end
-if shock_idx > 1 && isfield(AllShockResults, 'ShockArtifacts') && ...
-        numel(AllShockResults.ShockArtifacts) >= 1 && ...
-        ~isempty(AllShockResults.ShockArtifacts{1})
-    reference_artifact = AllShockResults.ShockArtifacts{1};
-    if isstruct(reference_artifact)
-        reference_fields = fieldnames(reference_artifact);
-        candidate_fields = fieldnames(artifact);
-        if ~isequal(reference_fields, candidate_fields)
-            fprintf(2, '[run_irf_loop] shock %d top-level field mismatch vs shock 1\n', shock_idx);
-            fprintf(2, '  shock 1 fields: %s\n', join_fieldnames(reference_fields));
-            fprintf(2, '  shock %d fields: %s\n', shock_idx, join_fieldnames(candidate_fields));
-        end
-    end
-end
-end
-
-function joined = join_fieldnames(fields)
-if isempty(fields)
-    joined = '(none)';
-    return;
-end
-joined = strjoin(fields(:).', ', ');
 end

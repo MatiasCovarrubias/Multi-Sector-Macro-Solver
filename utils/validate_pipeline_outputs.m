@@ -5,7 +5,7 @@ if nargin < 6
     context = 'validate_pipeline_outputs';
 end
 
-expects_diagnostics = flags.has_1storder || flags.has_2ndorder || flags.has_pf || flags.has_mit || has_irfs;
+expects_diagnostics = has_irfs;
 if expects_diagnostics
     has_diagnostics = isfield(ModelData, 'Diagnostics') && isstruct(ModelData.Diagnostics) && ...
         ~isempty(fieldnames(ModelData.Diagnostics));

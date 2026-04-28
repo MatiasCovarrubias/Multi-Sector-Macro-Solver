@@ -8,10 +8,12 @@ irf_results = get_irf_result_list(AllShockResults);
 Summary.rows = repmat(struct( ...
     'label', '', ...
     'A_level', NaN, ...
-    'avg_peak_1st', NaN, ...
-    'avg_peak_2nd', NaN, ...
-    'avg_peak_pf', NaN, ...
-    'avg_amplif_rel', NaN), n_shocks, 1);
+    'avg_cir_1st', NaN, ...
+    'avg_cir_2nd', NaN, ...
+    'avg_cir_pf', NaN, ...
+    'avg_nonlinear_amp_pf_vs_firstorder', NaN, ...
+    'n_amplified_sectors', NaN, ...
+    'n_attenuated_sectors', NaN), n_shocks, 1);
 
 for i = 1:n_shocks
     irf_res = get_irf_result_at(irf_results, i);
@@ -23,12 +25,17 @@ for i = 1:n_shocks
         continue;
     end
     summary_stats = get_irf_summary_stats(irf_res);
-    Summary.rows(i).avg_peak_1st = mean(summary_stats.peaks.first_order);
-    Summary.rows(i).avg_peak_pf = mean(summary_stats.peaks.perfect_foresight);
-    Summary.rows(i).avg_amplif_rel = mean(summary_stats.amplifications.rel);
+    Summary.rows(i).avg_cir_1st = mean(summary_stats.cumulative_responses.first_order);
+    Summary.rows(i).avg_cir_pf = mean(summary_stats.cumulative_responses.perfect_foresight);
+    Summary.rows(i).avg_nonlinear_amp_pf_vs_firstorder = finite_mean( ...
+        summary_stats.nonlinear_amplification.pf_vs_first_order);
+    Summary.rows(i).n_amplified_sectors = sum( ...
+        summary_stats.nonlinear_effect_class.pf_vs_first_order > 0);
+    Summary.rows(i).n_attenuated_sectors = sum( ...
+        summary_stats.nonlinear_effect_class.pf_vs_first_order < 0);
 
     if Summary.has_2ndorder_irfs
-        Summary.rows(i).avg_peak_2nd = mean(summary_stats.peaks.second_order);
+        Summary.rows(i).avg_cir_2nd = mean(summary_stats.cumulative_responses.second_order);
     end
 end
 
@@ -41,8 +48,9 @@ if ~(isstruct(irf_result) && ~isempty(fieldnames(irf_result)))
 end
 
 summary_stats = get_irf_summary_stats(irf_result);
-tf = isfield(summary_stats, 'peaks') && isfield(summary_stats.peaks, 'second_order') && ...
-    ~isempty(summary_stats.peaks.second_order);
+tf = isfield(summary_stats, 'cumulative_responses') && ...
+    isfield(summary_stats.cumulative_responses, 'second_order') && ...
+    ~isempty(summary_stats.cumulative_responses.second_order);
 end
 
 function tf = is_valid_irf_result(irf_result)
@@ -70,5 +78,14 @@ if numel(irf_results) < idx
     irf_res = struct();
 else
     irf_res = irf_results{idx};
+end
+end
+
+function value = finite_mean(values)
+finite_values = values(isfinite(values));
+if isempty(finite_values)
+    value = NaN;
+else
+    value = mean(finite_values);
 end
 end
